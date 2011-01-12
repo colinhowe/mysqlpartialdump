@@ -2,6 +2,7 @@ import MySQLdb
 import unittest
 import mysqlpartialdump as dumper
 from cStringIO import StringIO
+from mysqlpartialdump import UNIDIRECTIONAL
 
 def init_connection():
     try:
@@ -270,6 +271,36 @@ class TestImport(unittest.TestCase):
         self.assertEquals('Ginger', pets[1]['name'])
         self.assertEquals(None, pets[1]['parent_id'])
         self.assertEquals(1, pets[1]['owner_id'])
+ 
+    def test_unidirectional_link_backwards(self):
+        # Unidirectional links should only work one way. This is to account for
+        # tables not having indexes when following the link backwards and hence
+        # making the dump really slow
+        self.create_owner(1, 'Bob')
+        self.create_pet(1, 'Ginger', parent_id=None, owner_id=1)
+
+        relations = set([
+            (('pet', 'owner_id'), ('owner', 'id'), UNIDIRECTIONAL),
+        ])
+        result = self.do_partial_dump(relations, 'owner', '1=1')
+        self.import_dump(result)
+        self.assertEquals(1, len(self.get_owners()))
+        self.assertEquals(0, len(self.get_pets()))
+
+    def test_unidirectional_link_forwards(self):
+        # Unidirectional links should only work one way. This is to account for
+        # tables not having indexes when following the link backwards and hence
+        # making the dump really slow
+        self.create_owner(1, 'Bob')
+        self.create_pet(1, 'Ginger', parent_id=None, owner_id=1)
+
+        relations = set([
+            (('pet', 'owner_id'), ('owner', 'id'), UNIDIRECTIONAL),
+        ])
+        result = self.do_partial_dump(relations, 'pet', '1=1')
+        self.import_dump(result)
+        self.assertEquals(1, len(self.get_owners()))
+        self.assertEquals(1, len(self.get_pets()))
  
     def test_custom_relationship(self):
         # Relationships can be complicated. Callbacks can be used!

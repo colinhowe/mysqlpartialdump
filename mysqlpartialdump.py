@@ -9,6 +9,8 @@ LOG_INFO = 1
 LOG_DEBUG = 2
 DEBUG_LEVEL = LOG_NONE
 
+UNIDIRECTIONAL = 'unidirectional'
+
 def get_schema(cursor, name):
     cursor.execute("DESCRIBE %s"%name)
     return cursor.fetchall()
@@ -120,7 +122,9 @@ def partial_dump(result, relationships, pks, address, port, username, password, 
     # new dictionary that looks like:
     #   { table_name: { (col): (table_name, col) } }
     rels = {}
-    for (src, target) in relationships:
+    for relationship in relationships:
+        src = relationship[0]
+        target = relationship[1]
         if isinstance(src, basestring):
             rels[src] = rels.get(src, set())
             rels[src].add(target)
@@ -138,9 +142,10 @@ def partial_dump(result, relationships, pks, address, port, username, password, 
             rels[src_name] = rels.get(src_name, set())
             rels[src_name].add(create_callback(target_name, target[1], src[1]))
 
-            # The back link must also be setup as links are bidirectional
-            rels[target_name] = rels.get(target_name, set())
-            rels[target_name].add(create_callback(src_name, src[1], target[1]))
+            # The back link must also be setup for bidirectional links
+            if len(relationship) == 2 or relationship[2] != UNIDIRECTIONAL:
+                rels[target_name] = rels.get(target_name, set())
+                rels[target_name].add(create_callback(src_name, src[1], target[1]))
     relationships = rels
 
     db = MySQLdb.connect(
