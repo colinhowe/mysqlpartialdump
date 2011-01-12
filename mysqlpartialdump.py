@@ -113,7 +113,7 @@ def get_table(pks_seen, result, cursor, relationships, pks, table_name, where=No
 
     do_follows(pks_seen, result, cursor, relationships, pks, to_follow)
 
-def partial_dump(relationships, pks, address, port, username, password, database, start_table, start_where):
+def partial_dump(result, relationships, pks, address, port, username, password, database, start_table, start_where):
     # The relationships are stored as:
     #   { (table_name, col): (table_name, col) }
     # This isn't convenient for quick lookup based on table. So, create a
@@ -151,7 +151,6 @@ def partial_dump(relationships, pks, address, port, username, password, database
             port=port)
     c = db.cursor()
     
-    result = StringIO()
     result.write('START TRANSACTION;\n')
     get_table({}, result, c, relationships, pks, start_table, where=start_where)
     result.write('COMMIT;\n')
@@ -159,5 +158,4 @@ def partial_dump(relationships, pks, address, port, username, password, database
     c.execute('ROLLBACK')
     c.close()
     db.close()
-    return result.getvalue()
 

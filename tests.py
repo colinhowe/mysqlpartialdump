@@ -1,6 +1,7 @@
 import MySQLdb
 import unittest
 import mysqlpartialdump as dumper
+from cStringIO import StringIO
 
 def init_connection():
     try:
@@ -80,7 +81,9 @@ class TestImport(unittest.TestCase):
                 'log':['id'],
         }
         import test_config
-        return dumper.partial_dump(
+        result = StringIO() 
+        dumper.partial_dump(
+                result,
                 relationships, 
                 pks,
                 test_config.DB_ADDRESS,
@@ -90,6 +93,7 @@ class TestImport(unittest.TestCase):
                 test_config.DB_NAME,
                 start_table,
                 start_ids)
+        return result.getvalue()
 
     def create_pet(self, id, name, parent_id, owner_id):
         sql = 'INSERT INTO pet(id, name, parent_id, owner_id) VALUES(%s, %s, %s, %s)'
