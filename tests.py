@@ -178,6 +178,18 @@ class TestImport(unittest.TestCase):
         self.assertEquals(1, len(owners))
         self.assertEquals('Bob', owners[1]['name'])
 
+    def test_empty_string(self):
+        self.create_owner(1, '')
+        result = self.do_partial_dump({}, 'owner', 'id=1')
+
+        # An empty string should import correctly and not be saved as NULL
+        print result
+        self.import_dump(result)
+        
+        owners = self.get_owners()
+        self.assertEquals(1, len(owners))
+        self.assertEquals('', owners[1]['name'])
+
     def test_many_rows(self):
         # Importing many rows should work just the same
         # We need to test it though to ensure bulk inserts work
@@ -278,6 +290,24 @@ class TestImport(unittest.TestCase):
         self.assertEquals(1, len(logs))
         self.assertEquals('Pet1', logs[1]['entity'])
         self.assertEquals('Hello', logs[1]['message'])
+
+    def test_custom_relationship_returns_none(self):
+        # Relationships can be complicated. Callbacks can be used!
+        self.create_pet(1, 'Ginger', parent_id=None, owner_id=1)
+        self.create_log(1, 'Pet1', 'Hello')
+        def get_logs_relationship(row):
+            return None
+        relations = set([
+            ('pet', get_logs_relationship)
+        ])
+        result = self.do_partial_dump(relations, 'pet', '1=1')
+
+        # Reimporting the result should give a single row that is the same as
+        # the original input
+        self.import_dump(result)
+        
+        self.assertEquals(1, len(self.get_pets()))
+        self.assertEquals(0, len(self.get_logs()))
 
     def test_lots_of_references(self):
         # Lots of references should work fine

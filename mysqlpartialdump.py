@@ -1,6 +1,5 @@
 import MySQLdb
 import sys
-from cStringIO import StringIO
 
 BULK_INSERT_SIZE = 50
 FOLLOW_SIZE = 50
@@ -8,7 +7,7 @@ FOLLOW_SIZE = 50
 LOG_NONE = 0
 LOG_INFO = 1
 LOG_DEBUG = 2
-DEBUG_LEVEL = LOG_DEBUG
+DEBUG_LEVEL = LOG_NONE
 
 def get_schema(cursor, name):
     cursor.execute("DESCRIBE %s"%name)
@@ -96,7 +95,7 @@ def get_table(pks_seen, result, cursor, relationships, pks, table_name, where=No
         row_strings = []
         for row in rows:
             row_strings.append(
-                '(%s)'%",".join(["'%s'"%escape(value) if value else 'NULL' for value in row]))
+                '(%s)'%",".join(["'%s'"%escape(value) if value is not None else 'NULL' for value in row]))
         result.write(",".join(row_strings))
         result.write(';\n')
 
@@ -106,14 +105,15 @@ def get_table(pks_seen, result, cursor, relationships, pks, table_name, where=No
                 for i, field in enumerate(unsafe_field_names):
                     row_dict[field] = row[i]
                 r = callback(row_dict)
-                target_name = r[0]
-                keys = r[1:]
-                to_follow[target_name] = to_follow.get(target_name, set())
-                to_follow[target_name].add(frozenset(keys))
+                if r is not None:
+                    target_name = r[0]
+                    keys = r[1:]
+                    to_follow[target_name] = to_follow.get(target_name, set())
+                    to_follow[target_name].add(frozenset(keys))
 
     do_follows(pks_seen, result, cursor, relationships, pks, to_follow)
 
-def partial_dump(result, relationships, pks, address, port, username, password, database, start_table, start_where):
+def partial_dump(result, relationships, pks, address, port, username, password, database, start_table, start_where, start_args=[]):
     # The relationships are stored as:
     #   { (table_name, col): (table_name, col) }
     # This isn't convenient for quick lookup based on table. So, create a
@@ -150,12 +150,35 @@ def partial_dump(result, relationships, pks, address, port, username, password, 
             host=address,
             port=port)
     c = db.cursor()
-    
+ 
     result.write('START TRANSACTION;\n')
-    get_table({}, result, c, relationships, pks, start_table, where=start_where)
+    result.write('SET FOREIGN_KEY_CHECKS=0;\n')
+    pks_seen = dict([(name, set()) for name in pks.keys()])
+    get_table(pks_seen, result, c, relationships, pks, start_table, where=start_where, where_args=start_args)
+    result.write('SET FOREIGN_KEY_CHECKS=1;\n')
     result.write('COMMIT;\n')
     
     c.execute('ROLLBACK')
     c.close()
     db.close()
 
+if __name__ == "__main__":
+    import sys
+    configuration_file = sys.argv[1]
+    try:
+        m = __import__(configuration_file)
+        partial_dump(
+                sys.stdout, 
+                m.relationships, 
+                m.pks, 
+                m.DB_ADDRESS,
+                m.DB_PORT,
+                m.DB_USERNAME,
+                m.DB_PASSWORD,
+                m.DB_NAME,
+                m.start_table,
+                m.start_where,
+                m.start_args)
+    except ImportError, e:
+        print 'Failed to import %s:'%configuration_file
+        print e
