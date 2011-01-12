@@ -1,4 +1,5 @@
 import MySQLdb
+import sys
 from cStringIO import StringIO
 
 BULK_INSERT_SIZE = 50
@@ -24,12 +25,30 @@ def info(msg):
 def escape(value):
     return str(value).replace("'", "''")
 
-def get_table(pks_seen, result, cursor, relationships, pks, table_name, where=None):
+def do_follows(pks_seen, result, cursor, relationships, pks, to_follow):
+    for table, values in to_follow.iteritems():
+        values = list(values)
+        i = 0
+        while i < len(values):
+            values_to_follow = values[i:i+FOLLOW_SIZE]
+            clauses = []
+            args = []
+            for value in values_to_follow:
+                clauses.append("(%s)"%(" AND ".join(["%s = %%s"%col for col,_ in value])))
+                args += [val for _, val in value]
+            debug('Clauses to follow: %s'%clauses)
+            info('Following %s with %s'%(table, values_to_follow))
+            where = " OR ".join(clauses)
+            get_table(pks_seen, result, cursor, relationships, pks, table, where, args)
+            i += FOLLOW_SIZE
+
+def get_table(pks_seen, result, cursor, relationships, pks, table_name, where=None, where_args=[]):
     info('Exploring %s with where %s'%(table_name, where))
     c = cursor
 
     schema = get_schema(c, table_name)
     field_names = ["`%s`"%row[0] for row in schema]
+    unsafe_field_names = [row[0] for row in schema]
     field_offsets = dict([(row[0], i) for i, row in enumerate(schema)])
 
     c.execute(
@@ -37,7 +56,7 @@ def get_table(pks_seen, result, cursor, relationships, pks, table_name, where=No
                 ",".join(field_names),
                 table_name,
                 where
-            ))
+            ), where_args)
     if c.rowcount == 0:
         return
 
@@ -73,33 +92,18 @@ def get_table(pks_seen, result, cursor, relationships, pks, table_name, where=No
         result.write(",".join(row_strings))
         result.write(';\n')
 
-        for (src_col, target) in relationships.get(table_name, {}).iteritems():
-            target_name = target[0]
-            target_col = "`%s`"%target[1]
-            src_col = "`%s`"%src_col
+        for callback in relationships.get(table_name, set()):
             for row in rows:
                 row_dict = {}
-                for i, field in enumerate(field_names):
+                for i, field in enumerate(unsafe_field_names):
                     row_dict[field] = row[i]
+                r = callback(row_dict)
+                target_name = r[0]
+                keys = r[1:]
+                to_follow[target_name] = to_follow.get(target_name, set())
+                to_follow[target_name].add(frozenset(keys))
 
-                to_follow[target_name] = to_follow.get(target_name, {})
-                to_follow[target_name][target_col] = to_follow[target_name].get(target_col, {})
-                to_follow[target_name][target_col][row_dict[src_col]] = True
-
-    # Go over each table and relationship in the follow list and follow it
-    for table, table_relationships in to_follow.iteritems():
-        for relationship, values in table_relationships.iteritems():
-            i = 0
-            values = values.keys()
-            while i < len(values):
-                values_to_follow = values[i:i+FOLLOW_SIZE]
-                values_to_follow = ["'%s'"%value for value in values_to_follow]
-                info('Following %s with %s'%(table, values_to_follow))
-                where = "%s IN (%s)"%(relationship, ",".join(values_to_follow))
-                get_table(pks_seen, result, cursor, relationships, pks, table, where)
-                i += FOLLOW_SIZE
-
-    return
+    do_follows(pks_seen, result, cursor, relationships, pks, to_follow)
 
 def partial_dump(relationships, pks, address, port, username, password, database, start_table, start_where):
     # The relationships are stored as:
@@ -108,16 +112,27 @@ def partial_dump(relationships, pks, address, port, username, password, database
     # new dictionary that looks like:
     #   { table_name: { (col): (table_name, col) } }
     rels = {}
-    for (src, target) in relationships.iteritems():
-        src_name = src[0]
-        rels[src_name] = rels.get(src_name, {})
-        rels[src_name][src[1]] = target
+    for (src, target) in relationships:
+        if isinstance(src, basestring):
+            rels[src] = rels.get(src, set())
+            rels[src].add(target)
+        else:
+            def create_callback(target_table, target_col, src_col):
+                target_col = '%s'%target_col
+                src_col = '%s'%src_col
+                def callback(row):
+                    return (target_table, (target_col, row[src_col]))
+                return callback
 
-        # The back link must also be setup as links are bidirectional
-        target_name = target[0]
-        rels[target_name] = rels.get(target_name, {})
-        rels[target_name][target[1]] = src 
+            src_name = src[0]
+            target_name = target[0]
+            
+            rels[src_name] = rels.get(src_name, set())
+            rels[src_name].add(create_callback(target_name, target[1], src[1]))
 
+            # The back link must also be setup as links are bidirectional
+            rels[target_name] = rels.get(target_name, set())
+            rels[target_name].add(create_callback(src_name, src[1], target[1]))
     relationships = rels
 
     db = MySQLdb.connect(
@@ -127,7 +142,6 @@ def partial_dump(relationships, pks, address, port, username, password, database
             host=address,
             port=port)
     c = db.cursor()
-    
     
     result = StringIO()
     result.write('START TRANSACTION;\n')

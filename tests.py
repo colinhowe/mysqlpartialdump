@@ -116,6 +116,7 @@ class TestImport(unittest.TestCase):
         c = self.db.cursor()
         c.execute('DELETE FROM pet')
         c.execute('DELETE FROM owner')
+        c.execute('DELETE FROM log')
         self.db.commit()
         c.execute(dump)
         c.close()
@@ -191,9 +192,9 @@ class TestImport(unittest.TestCase):
         # A reference from X to Y should cause Y be pulled in if X is pulled in
         self.create_owner(1, 'Bob')
         self.create_pet(1, 'Ginger', parent_id=None, owner_id=1)
-        relations = {
-            ('owner', 'id'): ('pet', 'owner_id')
-        }
+        relations = set([
+            (('owner', 'id'), ('pet', 'owner_id')),
+        ])
         result = self.do_partial_dump(relations, 'owner', '1=1')
 
         # Reimporting the result should give a single row that is the same as
@@ -208,14 +209,37 @@ class TestImport(unittest.TestCase):
         self.assertEquals('Ginger', pets[1]['name'])
         self.assertEquals(None, pets[1]['parent_id'])
         self.assertEquals(1, pets[1]['owner_id'])
-    
+ 
+    def test_multiple_value_reference(self):
+        # A reference that pulls in multiple rows should work
+        self.create_owner(1, 'Bob')
+        self.create_pet(1, 'Ginger', parent_id=None, owner_id=1)
+        self.create_pet(2, 'Tabby', parent_id=None, owner_id=1)
+        relations = set([
+            (('owner', 'id'), ('pet', 'owner_id')),
+        ])
+        result = self.do_partial_dump(relations, 'owner', '1=1')
+
+        # Reimporting the result should give a single row that is the same as
+        # the original input
+        self.import_dump(result)
+        
+        pets = self.get_pets()
+        self.assertEquals(2, len(pets))
+        self.assertEquals('Ginger', pets[1]['name'])
+        self.assertEquals(None, pets[1]['parent_id'])
+        self.assertEquals(1, pets[1]['owner_id'])
+        self.assertEquals('Tabby', pets[2]['name'])
+        self.assertEquals(None, pets[2]['parent_id'])
+        self.assertEquals(1, pets[2]['owner_id'])
+   
     def test_back_reference(self):
         # A reference from X to Y should cause X be pulled in if Y is pulled in
         self.create_owner(1, 'Bob')
         self.create_pet(1, 'Ginger', parent_id=None, owner_id=1)
-        relations = {
-            ('pet', 'owner_id'): ('owner', 'id')
-        }
+        relations = set([
+            (('pet', 'owner_id'), ('owner', 'id')),
+        ])
         result = self.do_partial_dump(relations, 'owner', '1=1')
 
         # Reimporting the result should give a single row that is the same as
@@ -233,15 +257,14 @@ class TestImport(unittest.TestCase):
  
     def test_custom_relationship(self):
         # Relationships can be complicated. Callbacks can be used!
-        self.create_owner(1, 'Bob')
         self.create_pet(1, 'Ginger', parent_id=None, owner_id=1)
         self.create_log(1, 'Pet1', 'Hello')
         def get_logs_relationship(row):
-            return {'entity': 'Pet%s'%row['id']}
-        relations = {
-            ('pet'): get_logs_relationship
-        }
-        result = self.do_partial_dump(relations, 'owner', '1=1')
+            return ('log', ('entity', 'Pet%s'%row['id']))
+        relations = set([
+            ('pet', get_logs_relationship)
+        ])
+        result = self.do_partial_dump(relations, 'pet', '1=1')
 
         # Reimporting the result should give a single row that is the same as
         # the original input
@@ -251,3 +274,18 @@ class TestImport(unittest.TestCase):
         self.assertEquals(1, len(logs))
         self.assertEquals('Pet1', logs[1]['entity'])
         self.assertEquals('Hello', logs[1]['message'])
+
+    def test_lots_of_references(self):
+        # Lots of references should work fine
+        for x in xrange(1, 201):
+            self.create_owner(x, 'Bob')
+            self.create_pet(x, 'Ginger', parent_id=None, owner_id=x)
+        relations = set([
+            (('pet', 'owner_id'), ('owner', 'id')),
+        ])
+        result = self.do_partial_dump(relations, 'owner', '1=1')
+        print result 
+        self.import_dump(result)
+       
+        self.assertEquals(200, len(self.get_owners()))
+        self.assertEquals(200, len(self.get_pets()))
