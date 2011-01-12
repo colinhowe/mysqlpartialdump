@@ -27,6 +27,17 @@ def escape(value):
 
 def do_follows(pks_seen, result, cursor, relationships, pks, to_follow):
     for table, values in to_follow.iteritems():
+        to_remove = []
+        for value in values:
+            fields = [col for col, _ in value]
+            if fields == pks[table]:
+                pk = tuple([val for _, val in value])
+                if pk in pks_seen[table]:
+                    to_remove.append(value)
+        for value in to_remove:
+            values.remove(value)
+
+    for table, values in to_follow.iteritems():
         values = list(values)
         i = 0
         while i < len(values):
@@ -70,10 +81,7 @@ def get_table(pks_seen, result, cursor, relationships, pks, table_name, where=No
         pks_seen[table_name] = pks_seen.get(table_name, set())
         rows_to_remove = []
         for row in rows:
-            pk = []
-            for field in pks[table_name]:
-                pk.append(row[field_offsets[field]])
-            pk = tuple(pk)
+            pk = tuple([row[field_offsets[field]] for field in pks[table_name]])
             if pk in pks_seen[table_name]:
                 rows_to_remove.append(row)
             else:

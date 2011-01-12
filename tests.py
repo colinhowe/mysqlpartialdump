@@ -284,8 +284,32 @@ class TestImport(unittest.TestCase):
             (('pet', 'owner_id'), ('owner', 'id')),
         ])
         result = self.do_partial_dump(relations, 'owner', '1=1')
-        print result 
         self.import_dump(result)
        
         self.assertEquals(200, len(self.get_owners()))
         self.assertEquals(200, len(self.get_pets()))
+
+    def test_trims_seen_ids(self):
+        # If a relationship tries to follow to an ID we've already seen we 
+        # should stop it
+        self.create_owner(1, 'Bob')
+        self.create_pet(1, 'Ginger', parent_id=None, owner_id=1)
+        relations = set([
+            (('pet', 'owner_id'), ('owner', 'id')),
+        ])
+
+        # Mock out the get_table method so we can track how often it is called
+        original_get_table = dumper.get_table
+        def mock_get_table(*args, **kwargs):
+            mock_get_table.call_count += 1
+            original_get_table(*args, **kwargs)
+        mock_get_table.call_count = 0
+        dumper.get_table = mock_get_table
+
+        try:
+            result = self.do_partial_dump(relations, 'owner', '1=1')
+
+            # Only two tables, should only get called twice!
+            self.assertEquals(2, mock_get_table.call_count)
+        finally:
+            dumper.get_table = original_get_table
