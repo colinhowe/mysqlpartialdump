@@ -7,7 +7,7 @@ FOLLOW_SIZE = 50
 LOG_NONE = 0
 LOG_INFO = 1
 LOG_DEBUG = 2
-DEBUG_LEVEL = LOG_NONE
+DEBUG_LEVEL = LOG_DEBUG
 
 UNIDIRECTIONAL = 'unidirectional'
 
@@ -24,7 +24,7 @@ def info(msg):
         print msg
 
 def escape(value):
-    return str(value).replace("'", "''")
+    return str(value).replace("'", "''").replace("\\", "\\\\")
 
 def do_follows(pks_seen, result, cursor, relationships, pks, to_follow):
     debug('PKs seen: %s'%pks_seen)
