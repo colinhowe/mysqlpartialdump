@@ -2,7 +2,7 @@ import MySQLdb
 import unittest
 import mysqlpartialdump as dumper
 from cStringIO import StringIO
-from mysqlpartialdump import UNIDIRECTIONAL
+from mysqlpartialdump import UNIDIRECTIONAL, ALLOW_DUPLICATES
 
 def init_connection():
     try:
@@ -74,13 +74,14 @@ class TestImport(unittest.TestCase):
         if self.db is not None:
             self.db.close()
 
-    def do_partial_dump(self, relationships, start_table, start_ids):
+    def do_partial_dump(self, relationships, start_table, start_ids, pks=None):
         '''Helper method to make running a dump a bit tidier in tests'''
-        pks = {
-                'owner':['id'],
-                'pet':['id'],
-                'log':['id'],
-        }
+        if not pks:
+            pks = {
+                    'owner':(['id'],),
+                    'pet':(['id'],),
+                    'log':(['id'],),
+            }
         import test_config
         result = StringIO() 
         dumper.partial_dump(
@@ -117,12 +118,13 @@ class TestImport(unittest.TestCase):
         self.db.commit()
         c.close()
 
-    def import_dump(self, dump):
+    def import_dump(self, dump, clear=True):
         c = self.db.cursor()
-        c.execute('DELETE FROM pet')
-        c.execute('DELETE FROM owner')
-        c.execute('DELETE FROM log')
-        self.db.commit()
+        if clear:
+            c.execute('DELETE FROM pet')
+            c.execute('DELETE FROM owner')
+            c.execute('DELETE FROM log')
+            self.db.commit()
         c.execute(dump)
         c.close()
 
@@ -378,3 +380,22 @@ class TestImport(unittest.TestCase):
             self.assertEquals(2, mock_get_table.call_count)
         finally:
             dumper.get_table = original_get_table
+
+    def test_allow_duplicates(self):
+        self.create_owner(1, 'Bob')
+        pks = {
+                'owner':(['id'], set([ALLOW_DUPLICATES])),
+                'pet':(['id'], set()),
+                'log':(['id'], set()),
+        }
+        result = self.do_partial_dump({}, 'owner', 'id=1', pks=pks)
+
+        # Importing the result twice should result in a single row
+        self.import_dump(result)
+        self.import_dump(result, clear=False)
+        
+        owners = self.get_owners()
+        self.assertEquals(1, len(owners))
+        self.assertEquals('Bob', owners[1]['name'])
+
+

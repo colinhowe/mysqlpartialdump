@@ -7,9 +7,10 @@ FOLLOW_SIZE = 50
 LOG_NONE = 0
 LOG_INFO = 1
 LOG_DEBUG = 2
-DEBUG_LEVEL = LOG_NONE
+DEBUG_LEVEL = LOG_DEBUG
 
 UNIDIRECTIONAL = 'unidirectional'
+ALLOW_DUPLICATES = 'allow duplicates'
 
 def get_schema(cursor, name):
     cursor.execute("DESCRIBE %s"%name)
@@ -28,12 +29,14 @@ def escape(value):
 
 def do_follows(pks_seen, result, cursor, relationships, pks, to_follow):
     debug('PKs seen: %s'%pks_seen)
+    debug('To follow: %s'%to_follow)
     for table, values in to_follow.iteritems():
         to_remove = []
         for value in values:
             fields = [col for col, _ in value]
-            if fields == pks[table]:
+            if fields == pks[table][0]:
                 pk = tuple([val for _, val in value])
+                debug('Checking for PK %s'%pk)
                 if pk in pks_seen[table]:
                     debug('PK %s seen in %s'%(pk, table))
                     to_remove.append(value)
@@ -75,6 +78,11 @@ def get_table(pks_seen, result, cursor, relationships, pks, table_name, where=No
         return
 
     to_follow = {}
+    if len(pks[table_name]) == 1:
+        options = set()
+    else:
+        options = pks[table_name][1]
+    allow_duplicates = ALLOW_DUPLICATES in options
     while True:
         rows = list(c.fetchmany(BULK_INSERT_SIZE))
 
@@ -84,7 +92,7 @@ def get_table(pks_seen, result, cursor, relationships, pks, table_name, where=No
         pks_seen[table_name] = pks_seen.get(table_name, set())
         rows_to_remove = []
         for row in rows:
-            pk = tuple([row[field_offsets[field]] for field in pks[table_name]])
+            pk = tuple([row[field_offsets[field]] for field in pks[table_name][0]])
             if pk in pks_seen[table_name]:
                 debug('PK %s seen in %s'%(pk, table_name))
                 rows_to_remove.append(row)
@@ -96,7 +104,10 @@ def get_table(pks_seen, result, cursor, relationships, pks, table_name, where=No
 
         if not rows:
             break
-        result.write('INSERT INTO %s(%s) VALUES'%(table_name, ",".join(field_names)))
+        result.write('INSERT %s INTO %s(%s) VALUES'%(
+            "IGNORE" if allow_duplicates else "",
+            table_name, 
+            ",".join(field_names)))
 
         row_strings = []
         for row in rows:
