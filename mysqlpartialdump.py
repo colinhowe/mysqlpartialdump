@@ -7,7 +7,7 @@ FOLLOW_SIZE = 500
 LOG_NONE = 0
 LOG_INFO = 1
 LOG_DEBUG = 2
-DEBUG_LEVEL = LOG_NONE
+DEBUG_LEVEL = LOG_DEBUG
 
 UNIDIRECTIONAL = 'unidirectional'
 ALLOW_DUPLICATES = 'allow duplicates'
@@ -60,7 +60,7 @@ def do_follows(pks_seen, result, cursor, relationships, pks, to_follow):
             i += FOLLOW_SIZE
 
 def get_table(pks_seen, result, cursor, relationships, pks, table_name, where=None, where_args=[]):
-    info('Exploring %s with where %s'%(table_name, where))
+    info('Exploring %s with where %s and args %s'%(table_name, where, where_args))
     c = cursor
 
     schema = get_schema(c, table_name)
@@ -104,7 +104,7 @@ def get_table(pks_seen, result, cursor, relationships, pks, table_name, where=No
         result.write('INSERT %s INTO %s(%s) VALUES'%(
             "IGNORE" if allow_duplicates else "",
             table_name, 
-            ",".join(field_names)))
+            ",\n".join(field_names)))
 
         row_strings = []
         for row in rows:
