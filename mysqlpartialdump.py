@@ -104,13 +104,13 @@ def get_table(pks_seen, result, cursor, relationships, pks, table_name, where=No
         result.write('INSERT %s INTO %s(%s) VALUES'%(
             "IGNORE" if allow_duplicates else "",
             table_name, 
-            ",\n".join(field_names)))
+            ",".join(field_names)))
 
         row_strings = []
         for row in rows:
             row_strings.append(
                 '(%s)'%",".join(["'%s'"%escape(value) if value is not None else 'NULL' for value in row]))
-        result.write(",".join(row_strings))
+        result.write(",\n".join(row_strings))
         result.write(';\n')
 
         for callback in relationships.get(table_name, set()):
