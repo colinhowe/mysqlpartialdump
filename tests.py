@@ -398,4 +398,11 @@ class TestImport(unittest.TestCase):
         self.assertEquals(1, len(owners))
         self.assertEquals('Bob', owners[1]['name'])
 
-
+    def test_simple_pks(self):
+        self.create_owner(1, 'Bob')
+        pks = {
+                'owner':['id'],
+                'pet':['id'],
+                'log':['id'],
+        }
+        result = self.do_partial_dump({}, 'owner', 'id=1', pks=pks)

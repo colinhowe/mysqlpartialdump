@@ -78,10 +78,7 @@ def get_table(pks_seen, result, cursor, relationships, pks, table_name, where=No
         return
 
     to_follow = {}
-    if len(pks[table_name]) == 1:
-        options = set()
-    else:
-        options = pks[table_name][1]
+    options = pks[table_name][1]
     allow_duplicates = ALLOW_DUPLICATES in options
     while True:
         rows = list(c.fetchmany(BULK_INSERT_SIZE))
@@ -131,6 +128,20 @@ def get_table(pks_seen, result, cursor, relationships, pks, table_name, where=No
     do_follows(pks_seen, result, cursor, relationships, pks, to_follow)
 
 def partial_dump(result, relationships, pks, address, port, username, password, database, start_table, start_where, start_args=[]):
+    # PKs can be passed in as either a list of columns or a tuple containing a
+    # list of columns and a set of options.
+    # To make things simpler later we sanitise the PKs now
+    new_pks = {}
+    for table_name, keys in pks.iteritems():
+        if isinstance(keys, list):
+            new_pks[table_name] = (keys, set())
+        elif len(keys) == 1:
+            new_pks[table_name] = (keys[0], set())
+        else:
+            new_pks[table_name] = keys
+
+    pks = new_pks
+
     # The relationships are stored as:
     #   { (table_name, col): (table_name, col) }
     # This isn't convenient for quick lookup based on table. So, create a
