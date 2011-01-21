@@ -74,7 +74,7 @@ class TestImport(unittest.TestCase):
         if self.db is not None:
             self.db.close()
 
-    def do_partial_dump(self, relationships, start_table, start_ids, pks=None):
+    def do_partial_dump(self, relationships, start_table, start_where, pks=None, row_callbacks={}):
         '''Helper method to make running a dump a bit tidier in tests'''
         if not pks:
             pks = {
@@ -83,18 +83,21 @@ class TestImport(unittest.TestCase):
                     'log':(['id'],),
             }
         import test_config
-        result = StringIO() 
-        dumper.partial_dump(
-                result,
-                relationships, 
-                pks,
-                test_config.DB_ADDRESS,
-                test_config.DB_PORT,
-                test_config.DB_USERNAME,
-                test_config.DB_PASSWORD,
-                test_config.DB_NAME,
-                start_table,
-                start_ids)
+        result = StringIO()
+        dump = dumper.Dumper(
+                result=result,
+                relationships=relationships,
+                pks=pks,
+                callbacks=row_callbacks,
+                db_address=test_config.DB_ADDRESS,
+                db_port=test_config.DB_PORT,
+                db_username=test_config.DB_USERNAME,
+                db_password=test_config.DB_PASSWORD,
+                db_name=test_config.DB_NAME,
+                start_table=start_table,
+                start_where=start_where,
+                )
+        dump.go()
         return result.getvalue()
 
     def create_pet(self, id, name, parent_id, owner_id):
@@ -180,6 +183,20 @@ class TestImport(unittest.TestCase):
         owners = self.get_owners()
         self.assertEquals(1, len(owners))
         self.assertEquals('Bob', owners[1]['name'])
+
+    def test_row_callbacks(self):
+        self.create_owner(1, 'Bob')
+        def owner_callback(row):
+            row['name'] = row['name'][0:2] + "******"
+            return row
+        callbacks = { 'owner': owner_callback }
+        result = self.do_partial_dump({}, 'owner', 'id=1', row_callbacks=callbacks)
+
+        self.import_dump(result)
+        
+        owners = self.get_owners()
+        self.assertEquals(1, len(owners))
+        self.assertEquals('Bo******', owners[1]['name'])
 
     def test_empty_string(self):
         self.create_owner(1, '')
@@ -366,12 +383,12 @@ class TestImport(unittest.TestCase):
         ])
 
         # Mock out the get_table method so we can track how often it is called
-        original_get_table = dumper.get_table
+        original_get_table = dumper.Dumper.get_table
         def mock_get_table(*args, **kwargs):
             mock_get_table.call_count += 1
             original_get_table(*args, **kwargs)
         mock_get_table.call_count = 0
-        dumper.get_table = mock_get_table
+        dumper.Dumper.get_table = mock_get_table
 
         try:
             result = self.do_partial_dump(relations, 'owner', '1=1')
