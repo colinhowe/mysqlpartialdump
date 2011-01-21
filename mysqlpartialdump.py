@@ -271,7 +271,7 @@ if __name__ == "__main__":
                 m.DB_NAME,
                 m.start_table,
                 m.start_where,
-                m.start_args)
+                m.start_args).go()
     except ImportError, e:
         print 'Failed to import %s:'%configuration_file
         print e
