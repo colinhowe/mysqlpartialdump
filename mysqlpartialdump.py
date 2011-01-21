@@ -259,10 +259,11 @@ if __name__ == "__main__":
     configuration_file = sys.argv[1]
     try:
         m = __import__(configuration_file)
-        partial_dump(
+        Dumper(
                 sys.stdout, 
                 m.relationships, 
                 m.pks, 
+                m.callbacks,
                 m.DB_ADDRESS,
                 m.DB_PORT,
                 m.DB_USERNAME,
