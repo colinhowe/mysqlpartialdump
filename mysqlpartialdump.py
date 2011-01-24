@@ -145,7 +145,9 @@ class Dumper(object):
         debug('PKs seen: %s'%self.pks_seen)
         debug('To follow: %s'%to_follow)
         for table, follow_sets in to_follow.iteritems():
-            for field_names, value_sets in follow_sets.iteritems():
+            follow_sets_keys = list(follow_sets.keys())
+            for field_names in follow_sets_keys:
+                value_sets = follow_sets[field_names]
                 if field_names == self.pks[table][0]:
                     values = []
                     for value_tuple in value_sets:
@@ -154,9 +156,9 @@ class Dumper(object):
                 else:
                     values = list(value_sets)
 
-                i = 0
-                while i < len(values):
-                    values_to_follow = values[i:i+FOLLOW_SIZE]
+                while len(values) > 0:
+                    values_to_follow = values[:FOLLOW_SIZE]
+                    del(values[:FOLLOW_SIZE])
                     clauses = []
                     args = []
                     clause = " AND ".join(["%s = %%s"%col for col in field_names])
@@ -167,7 +169,7 @@ class Dumper(object):
                     info('Following %s with %s'%(table, values_to_follow))
                     where = " OR ".join(clauses)
                     self.get_table(table, where, args)
-                    i += FOLLOW_SIZE
+                del(follow_sets[field_names])
 
     def get_pk(self, table_name, row):
         (_, _, field_offsets) = self._get_schema(table_name)
