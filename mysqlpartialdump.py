@@ -31,7 +31,9 @@ def info(msg):
         stderr.write('INFO: %s %s\n'%(datetime.now(), msg[:100]))
 
 def escape(value):
-    return str(value).replace("'", "''").replace("\\", "\\\\")
+    if not isinstance(value, basestring):
+        return str(value)
+    return value.replace("'", "''").replace("\\", "\\\\")
 
 class Dumper(object):
     def __init__(
