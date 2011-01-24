@@ -280,10 +280,11 @@ if __name__ == "__main__":
 
     optlist, args = getopt.getopt(sys.argv[1:], 'di')
 
-    if '-d' in optlist:
-        DEBUG_LEVEL = LOG_DEBUG
-    if '-i' in optlist:
-        DEBUG_LEVEL = LOG_INFO
+    for o, a in optlist:
+        if o == '-d':
+            DEBUG_LEVEL = LOG_DEBUG
+        if o == '-i':
+            DEBUG_LEVEL = LOG_INFO
 
     configuration_file = args[0]
     try:
