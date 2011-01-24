@@ -75,7 +75,7 @@ class TestImport(unittest.TestCase):
         if self.db is not None:
             self.db.close()
 
-    def do_partial_dump(self, relationships, start_table, start_where, pks=None, row_callbacks={}):
+    def do_partial_dump(self, relationships, start_table, start_where, pks=None, row_callbacks={}, end_sql=''):
         '''Helper method to make running a dump a bit tidier in tests'''
         if not pks:
             pks = {
@@ -97,6 +97,7 @@ class TestImport(unittest.TestCase):
                 db_name=test_config.DB_NAME,
                 start_table=start_table,
                 start_where=start_where,
+                end_sql=end_sql
                 )
         dump.go()
         return result.getvalue()
@@ -424,4 +425,19 @@ class TestImport(unittest.TestCase):
                 'log':['id'],
         }
         result = self.do_partial_dump({}, 'owner', 'id=1', pks=pks)
+
+    def test_end_sql(self):
+        self.create_owner(1, 'Bob')
+        result = self.do_partial_dump({}, 'owner', 'id=1', end_sql="""
+        INSERT INTO owner(name) VALUES('Alan');
+        """)
+
+        # Reimporting the result should give a single row that is the same as
+        # the original input
+        self.import_dump(result)
+        
+        owners = self.get_owners()
+        self.assertEquals(2, len(owners))
+        self.assertEquals('Bob', owners[1]['name'])
+        self.assertEquals('Alan', owners[2]['name'])
 

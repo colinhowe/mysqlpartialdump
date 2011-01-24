@@ -25,7 +25,7 @@ def debug(msg):
 
 def info(msg):
     if DEBUG_LEVEL >= LOG_INFO:
-        stderr.write('INFO: %s %s\n'%(datetime.now(), msg))
+        stderr.write('INFO: %s %s\n'%(datetime.now(), msg[:100]))
 
 def escape(value):
     return str(value).replace("'", "''").replace("\\", "\\\\")
@@ -44,7 +44,8 @@ class Dumper(object):
             db_name,
             start_table,
             start_where,
-            start_args=[]
+            start_args=[],
+            end_sql=''
             ):
         self.result = result
         self.relationships = relationships
@@ -58,6 +59,7 @@ class Dumper(object):
         self.start_table = start_table
         self.start_where = start_where
         self.start_args = start_args
+        self.end_sql = end_sql
 
         self.cached_schemas = {}
 
@@ -127,6 +129,8 @@ class Dumper(object):
         self.cursor.execute('ROLLBACK')
         self.cursor.close()
         db.close()
+
+        self.result.write(self.end_sql)
 
     def _get_schema(self, table_name):
         '''Gets the schema of the given table. Will call to the database to
