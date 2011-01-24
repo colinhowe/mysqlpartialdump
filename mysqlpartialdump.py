@@ -1,4 +1,5 @@
 import MySQLdb
+from MySQLdb import cursors
 import sys
 import getopt
 from sys import stderr
@@ -123,7 +124,7 @@ class Dumper(object):
                 db=self.db_name,
                 host=self.db_address,
                 port=self.db_port,
-                cursorclass=MySQLdb.cursors.SSCursor)
+                cursorclass=cursors.SSCursor)
         self.cursor = db.cursor()
         self.cursor.execute('START TRANSACTION')
      
