@@ -4,7 +4,7 @@ import sys
 import getopt
 from sys import stderr
 from datetime import datetime
-import codes
+import codecs
 
 BULK_INSERT_SIZE = 500
 FOLLOW_SIZE = 500
