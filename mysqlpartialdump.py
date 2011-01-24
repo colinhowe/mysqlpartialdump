@@ -122,7 +122,8 @@ class Dumper(object):
                 passwd=self.db_password,
                 db=self.db_name,
                 host=self.db_address,
-                port=self.db_port)
+                port=self.db_port,
+                cursorclass=MySQLdb.cursors.SSCursor)
         self.cursor = db.cursor()
         self.cursor.execute('START TRANSACTION')
      
