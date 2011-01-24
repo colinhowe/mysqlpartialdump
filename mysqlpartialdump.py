@@ -165,6 +165,7 @@ class Dumper(object):
                         if value_tuple not in self.pks_seen[table]:
                             values.append(value_tuple)
                 else:
+                    info('Not killing follows for %s %s'%(field_names, table))
                     values = list(value_sets)
 
                 batch_size = self.batch_sizes[(table, field_names)]
