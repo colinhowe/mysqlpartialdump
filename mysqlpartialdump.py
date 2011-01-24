@@ -14,6 +14,7 @@ DEBUG_LEVEL = LOG_NONE
 
 UNIDIRECTIONAL = 'unidirectional'
 ALLOW_DUPLICATES = 'allow duplicates'
+NO_KEY_CACHE = 'no key cache'
 
 def get_schema(cursor, name):
     cursor.execute("DESCRIBE %s"%name)
@@ -166,8 +167,6 @@ class Dumper(object):
                             values.append(value_tuple)
                 else:
                     info('Not killing follows for %s %s'%(field_names, table))
-                    info('Table PK is %s'%self.pks[table][0])
-                    info('Table PK 2 is %s'%self.pks[table])
                     values = list(value_sets)
 
                 batch_size = self.batch_sizes[(table, field_names)]
@@ -202,6 +201,8 @@ class Dumper(object):
 
     def add_row(self, table_name, row):
         pk = self.get_pk(table_name, row)
+        if NO_KEY_CACHE in self.pks[table_name][1]:
+            return True
         if pk in self.pks_seen[table_name]:
             return False
         self.pks_seen[table_name].add(pk)
