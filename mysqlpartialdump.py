@@ -1,7 +1,7 @@
 import MySQLdb
 import sys
+import getopt
 from sys import stderr
-from time import time
 from datetime import datetime
 
 BULK_INSERT_SIZE = 500
@@ -277,7 +277,15 @@ class Dumper(object):
         self.do_follows(to_follow)
 
 if __name__ == "__main__":
-    configuration_file = sys.argv[1]
+
+    optlist, args = getopt.getopt(sys.argv[1:], 'di')
+
+    if '-d' in optlist:
+        DEBUG_LEVEL = LOG_DEBUG
+    if '-i' in optlist:
+        DEBUG_LEVEL = LOG_INFO
+
+    configuration_file = args[0]
     try:
         m = __import__(configuration_file)
         Dumper(
