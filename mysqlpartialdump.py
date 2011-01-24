@@ -75,7 +75,7 @@ class Dumper(object):
             elif len(keys) == 1:
                 new_pks[table_name] = (tuple(keys[0]), set())
             else:
-                new_pks[table_name] = tuple(keys)
+                new_pks[table_name] = (tuple(keys[0]), keys[1])
 
         self.pks = new_pks
         self.pks_seen = dict([(name, set()) for name in self.pks.keys()])
@@ -166,6 +166,8 @@ class Dumper(object):
                             values.append(value_tuple)
                 else:
                     info('Not killing follows for %s %s'%(field_names, table))
+                    info('Table PK is %s'%self.pks[table][0])
+                    info('Table PK 2 is %s'%self.pks[table])
                     values = list(value_sets)
 
                 batch_size = self.batch_sizes[(table, field_names)]
