@@ -4,6 +4,7 @@ import sys
 import getopt
 from sys import stderr
 from datetime import datetime
+import codes
 
 BULK_INSERT_SIZE = 500
 FOLLOW_SIZE = 500
@@ -49,7 +50,7 @@ class Dumper(object):
             start_args=[],
             end_sql=''
             ):
-        self.result = result
+        self.result = codecs.getwriter('utf8')(result)
         self.relationships = relationships
         self.pks = pks
         self.callbacks = callbacks
@@ -124,6 +125,7 @@ class Dumper(object):
                 db=self.db_name,
                 host=self.db_address,
                 port=self.db_port,
+                charset='utf8',
                 cursorclass=cursors.SSCursor)
         self.cursor = db.cursor()
         self.cursor.execute('START TRANSACTION')
