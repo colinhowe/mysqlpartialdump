@@ -1,5 +1,6 @@
 import MySQLdb
 import sys
+from time import time
 
 BULK_INSERT_SIZE = 500
 FOLLOW_SIZE = 500
@@ -65,11 +66,11 @@ class Dumper(object):
         new_pks = {}
         for table_name, keys in self.pks.iteritems():
             if isinstance(keys, list):
-                new_pks[table_name] = (keys, set())
+                new_pks[table_name] = (tuple(keys), set())
             elif len(keys) == 1:
-                new_pks[table_name] = (keys[0], set())
+                new_pks[table_name] = (tuple(keys[0]), set())
             else:
-                new_pks[table_name] = keys
+                new_pks[table_name] = tuple(keys)
 
         self.pks = new_pks
         self.pks_seen = dict([(name, set()) for name in self.pks.keys()])
@@ -143,39 +144,34 @@ class Dumper(object):
     def do_follows(self, to_follow):
         debug('PKs seen: %s'%self.pks_seen)
         debug('To follow: %s'%to_follow)
-        for table, values in to_follow.iteritems():
-            to_remove = []
-            for value in values:
-                fields = [col for col, _ in value]
-                if fields == self.pks[table][0]:
-                    pk = tuple([val for _, val in value])
-                    debug('Checking for PK %s'%pk)
-                    if pk in self.pks_seen[table]:
-                        debug('PK %s seen in %s'%(pk, table))
-                        to_remove.append(value)
-            for value in to_remove:
-                values.remove(value)
+        for table, follow_sets in to_follow.iteritems():
+            for field_names, value_sets in follow_sets.iteritems():
+                if field_names == self.pks[table][0]:
+                    values = []
+                    for value_tuple in value_sets:
+                        if value_tuple not in self.pks_seen[table]:
+                            values.append(value_tuple)
+                else:
+                    values = list(value_sets)
 
-        for table, values in to_follow.iteritems():
-            values = list(values)
-            i = 0
-            while i < len(values):
-                values_to_follow = values[i:i+FOLLOW_SIZE]
-                clauses = []
-                args = []
-                for value in values_to_follow:
-                    clauses.append("(%s)"%(" AND ".join(["%s = %%s"%col for col,_ in value])))
-                    args += [val for _, val in value]
-                debug('Clauses to follow: %s'%clauses)
-                info('Following %s with %s'%(table, values_to_follow))
-                where = " OR ".join(clauses)
-                self.get_table(table, where, args)
-                i += FOLLOW_SIZE
+                i = 0
+                while i < len(values):
+                    values_to_follow = values[i:i+FOLLOW_SIZE]
+                    clauses = []
+                    args = []
+                    clause = " AND ".join(["%s = %%s"%col for col in field_names])
+                    clauses = [clause] * len(values_to_follow)
+                    for value in values_to_follow:
+                        args += [val for val in value]
+                    debug('Clauses to follow: %s'%clauses)
+                    info('Following %s with %s'%(table, values_to_follow))
+                    where = " OR ".join(clauses)
+                    self.get_table(table, where, args)
+                    i += FOLLOW_SIZE
 
     def get_pk(self, table_name, row):
-        (safe_field_names, unsafe_field_names, field_offsets) = self._get_schema(table_name)
+        (_, _, field_offsets) = self._get_schema(table_name)
         return tuple([row[field_offsets[field]] for field in self.pks[table_name][0]])
- 
 
     def is_row_seen(self, table_name, row):
         pk = self.get_pk(table_name, row)
@@ -187,9 +183,9 @@ class Dumper(object):
             return False
 
     def add_row(self, table_name, row):
-        if self.is_row_seen(table_name, row):
-            return False
         pk = self.get_pk(table_name, row)
+        if pk in self.pks_seen[table_name]:
+            return False
         self.pks_seen[table_name].add(pk)
         return True
 
@@ -213,12 +209,10 @@ class Dumper(object):
         while True:
             rows = list(self.cursor.fetchmany(BULK_INSERT_SIZE))
 
-            # Remove rows we have already processed
+            # Only process rows we have not already processed
             if table_name not in self.pks:
                 raise Exception('PK not created for %s'%table_name)
-            rows_to_remove = [row for row in rows if not self.add_row(table_name, row)]
-            for row in rows_to_remove:
-                rows.remove(row)
+            rows = [row for row in rows if self.add_row(table_name, row)]
 
             if not rows:
                 break
@@ -246,11 +240,16 @@ class Dumper(object):
                     for i, field in enumerate(unsafe_field_names):
                         row_dict[field] = row[i]
                     r = callback(row_dict)
-                    if r is not None:
-                        target_name = r[0]
-                        keys = r[1:]
-                        to_follow[target_name] = to_follow.get(target_name, set())
-                        to_follow[target_name].add(frozenset(keys))
+                    if r is None:
+                        continue
+                    target_name = r[0]
+                    keys = r[1:]
+                    to_follow[target_name] = to_follow.get(target_name, dict())
+                    field_names = tuple([field_name for (field_name, _) in keys])
+                    follow_set = to_follow[target_name].get(field_names, set())
+                    values = tuple([value for (_, value) in keys])
+                    follow_set.add(values)
+                    to_follow[target_name][field_names] = follow_set
 
         self.do_follows(to_follow)
 

@@ -51,6 +51,7 @@ class TestImport(unittest.TestCase):
             `name` VARCHAR(30) NOT NULL,
             `parent_id` INT NULL,
             `owner_id` INT NOT NULL,
+            INDEX `owner_id` (`owner_id`),
             PRIMARY KEY (`id`)
             );''')
         c.execute('''
@@ -423,3 +424,4 @@ class TestImport(unittest.TestCase):
                 'log':['id'],
         }
         result = self.do_partial_dump({}, 'owner', 'id=1', pks=pks)
+
