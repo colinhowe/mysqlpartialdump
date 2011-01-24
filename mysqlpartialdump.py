@@ -1,6 +1,8 @@
 import MySQLdb
 import sys
+from sys import stderr
 from time import time
+from datetime import datetime
 
 BULK_INSERT_SIZE = 500
 FOLLOW_SIZE = 500
@@ -19,11 +21,11 @@ def get_schema(cursor, name):
 
 def debug(msg):
     if DEBUG_LEVEL >= LOG_DEBUG:
-        print msg
+        stderr.write('DEBUG: %s %s\n'%(datetime.now(), msg))
 
 def info(msg):
     if DEBUG_LEVEL >= LOG_INFO:
-        print msg
+        stderr.write('INFO: %s %s\n'%(datetime.now(), msg))
 
 def escape(value):
     return str(value).replace("'", "''").replace("\\", "\\\\")
@@ -256,7 +258,6 @@ class Dumper(object):
         self.do_follows(to_follow)
 
 if __name__ == "__main__":
-    import sys
     configuration_file = sys.argv[1]
     try:
         m = __import__(configuration_file)
