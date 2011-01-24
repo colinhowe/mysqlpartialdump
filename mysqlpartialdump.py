@@ -167,7 +167,7 @@ class Dumper(object):
                 else:
                     values = list(value_sets)
 
-                batch_size = self.batch_sizes[field_names]
+                batch_size = self.batch_sizes[(table, field_names)]
 
                 while len(values) > 0:
                     values_to_follow = values[:batch_size]
@@ -265,9 +265,9 @@ class Dumper(object):
                     values = tuple([value for (_, value) in keys])
                     follow_set.add(values)
                     if hasattr(callback, 'batch_size'):
-                        self.batch_sizes[field_names] = callback.batch_size
+                        self.batch_sizes[(target_name, field_names)] = callback.batch_size
                     else:
-                        self.batch_sizes[field_names] = FOLLOW_SIZE
+                        self.batch_sizes[(target_name, field_names)] = FOLLOW_SIZE
                     to_follow[target_name][field_names] = follow_set
 
         self.do_follows(to_follow)
