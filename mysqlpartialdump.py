@@ -60,6 +60,7 @@ class Dumper(object):
         self.start_where = start_where
         self.start_args = start_args
         self.end_sql = end_sql
+        self.batch_sizes = {}
 
         self.cached_schemas = {}
 
@@ -103,7 +104,11 @@ class Dumper(object):
                 target_name = target[0]
                 
                 rels[src_name] = rels.get(src_name, set())
-                rels[src_name].add(create_callback(target_name, target[1], src[1]))
+                callback = create_callback(target_name, target[1], src[1])
+                rels[src_name].add(callback)
+
+                if len(relationship) == 4:
+                    callback.batch_size = relationship[3]
 
                 # The back link must also be setup for bidirectional links
                 if len(relationship) == 2 or relationship[2] != UNIDIRECTIONAL:
@@ -162,9 +167,11 @@ class Dumper(object):
                 else:
                     values = list(value_sets)
 
+                batch_size = self.batch_sizes[field_names]
+
                 while len(values) > 0:
-                    values_to_follow = values[:FOLLOW_SIZE]
-                    del(values[:FOLLOW_SIZE])
+                    values_to_follow = values[:batch_size]
+                    del(values[:batch_size])
                     clauses = []
                     args = []
                     clause = " AND ".join(["%s = %%s"%col for col in field_names])
@@ -257,6 +264,10 @@ class Dumper(object):
                     follow_set = to_follow[target_name].get(field_names, set())
                     values = tuple([value for (_, value) in keys])
                     follow_set.add(values)
+                    if hasattr(callback, 'batch_size'):
+                        self.batch_sizes[field_names] = callback.batch_size
+                    else:
+                        self.batch_sizes[field_names] = FOLLOW_SIZE
                     to_follow[target_name][field_names] = follow_set
 
         self.do_follows(to_follow)

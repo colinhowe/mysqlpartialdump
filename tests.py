@@ -417,6 +417,20 @@ class TestImport(unittest.TestCase):
         self.assertEquals(1, len(owners))
         self.assertEquals('Bob', owners[1]['name'])
 
+    def test_limit_relationship_batch_size(self):
+        self.create_owner(1, 'Alan')
+        self.create_owner(2, 'Bob')
+        self.create_pet(1, 'Ginger', parent_id=None, owner_id=1)
+        self.create_pet(2, 'Tabby', parent_id=None, owner_id=2)
+        relations = set([
+            (('owner', 'id'), ('pet', 'owner_id'), None, 1),
+        ])
+        result = self.do_partial_dump(relations, 'owner', '1=1')
+
+        # Each owner should result in a distinct insert into the pet table
+        self.import_dump(result)
+        self.assertEquals(1 + 2, result.count('INSERT'))
+
     def test_simple_pks(self):
         self.create_owner(1, 'Bob')
         pks = {
