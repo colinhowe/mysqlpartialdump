@@ -4,6 +4,7 @@ import sys
 import getopt
 from sys import stderr
 from datetime import datetime
+import codecs
 
 BULK_INSERT_SIZE = 500
 FOLLOW_SIZE = 500
@@ -30,7 +31,9 @@ def info(msg):
         stderr.write('INFO: %s %s\n'%(datetime.now(), msg[:100]))
 
 def escape(value):
-    return str(value).replace("'", "''").replace("\\", "\\\\")
+    if not isinstance(value, basestring):
+        return str(value)
+    return value.replace("'", "''").replace("\\", "\\\\")
 
 class Dumper(object):
     def __init__(
@@ -49,7 +52,7 @@ class Dumper(object):
             start_args=[],
             end_sql=''
             ):
-        self.result = result
+        self.result = codecs.getwriter('utf8')(result)
         self.relationships = relationships
         self.pks = pks
         self.callbacks = callbacks
@@ -124,6 +127,7 @@ class Dumper(object):
                 db=self.db_name,
                 host=self.db_address,
                 port=self.db_port,
+                charset='utf8',
                 cursorclass=cursors.SSCursor)
         self.cursor = db.cursor()
         self.cursor.execute('START TRANSACTION')
@@ -221,14 +225,14 @@ class Dumper(object):
                     table_name,
                     where
                 ), where_args)
-        if self.cursor.rowcount == 0:
-            return
 
         to_follow = {}
         options = self.pks[table_name][1]
         allow_duplicates = ALLOW_DUPLICATES in options
         while True:
             rows = list(self.cursor.fetchmany(BULK_INSERT_SIZE))
+            if not rows:
+                break
 
             # Only process rows we have not already processed
             if table_name not in self.pks:
@@ -236,7 +240,7 @@ class Dumper(object):
             rows = [row for row in rows if self.add_row(table_name, row)]
 
             if not rows:
-                break
+                continue
             
             self.result.write('INSERT %s INTO %s(%s) VALUES'%(
                 "IGNORE" if allow_duplicates else "",
