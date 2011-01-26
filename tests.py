@@ -3,6 +3,7 @@ import unittest
 import mysqlpartialdump as dumper
 from cStringIO import StringIO
 from mysqlpartialdump import UNIDIRECTIONAL, ALLOW_DUPLICATES
+import os.path
 
 def init_connection():
     try:
@@ -23,6 +24,8 @@ DB_NAME = somedatabase
             host=test_config.DB_ADDRESS,
             port=test_config.DB_PORT)
     return db
+
+TEST_OUTPUT_PREFIX = 'test_dump.tmp'
 
 class TestImport(unittest.TestCase):
 
@@ -75,7 +78,7 @@ class TestImport(unittest.TestCase):
         if self.db is not None:
             self.db.close()
 
-    def do_partial_dump(self, relationships, start_table, start_where, pks=None, row_callbacks={}, end_sql=''):
+    def do_partial_dump(self, relationships, start_table, start_where, pks=None, row_callbacks={}, end_sql='', chunks=1):
         '''Helper method to make running a dump a bit tidier in tests'''
         if not pks:
             pks = {
@@ -84,9 +87,7 @@ class TestImport(unittest.TestCase):
                     'log':(['id'],),
             }
         import test_config
-        result = StringIO()
         dump = dumper.Dumper(
-                result=result,
                 relationships=relationships,
                 pks=pks,
                 callbacks=row_callbacks,
@@ -97,10 +98,11 @@ class TestImport(unittest.TestCase):
                 db_name=test_config.DB_NAME,
                 start_table=start_table,
                 start_where=start_where,
-                end_sql=end_sql
+                end_sql=end_sql,
+                chunks=chunks,
+                output_prefix=TEST_OUTPUT_PREFIX
                 )
         dump.go()
-        return result.getvalue()
 
     def create_pet(self, id, name, parent_id, owner_id):
         sql = 'INSERT INTO pet(id, name, parent_id, owner_id) VALUES(%s, %s, %s, %s)'
@@ -123,15 +125,23 @@ class TestImport(unittest.TestCase):
         self.db.commit()
         c.close()
 
-    def import_dump(self, dump, clear=True):
-        c = self.db.cursor()
+    def import_dump(self, clear=True, chunks=1):
         if clear:
+            c = self.db.cursor()
             c.execute('DELETE FROM pet')
             c.execute('DELETE FROM owner')
             c.execute('DELETE FROM log')
             self.db.commit()
-        c.execute(dump)
-        c.close()
+            c.close()
+
+        for chunk in range(chunks):
+            f = open('%s.%d'%(TEST_OUTPUT_PREFIX, chunk), 'r')
+            dump = f.read()
+            c = self.db.cursor()
+            c.execute(dump)
+            c.close()
+            f.close()
+
 
     def get_owners(self):
         c = self.db.cursor()
@@ -176,11 +186,11 @@ class TestImport(unittest.TestCase):
  
     def test_single_row(self):
         self.create_owner(1, 'Bob')
-        result = self.do_partial_dump({}, 'owner', 'id=1')
+        self.do_partial_dump({}, 'owner', 'id=1')
 
         # Reimporting the result should give a single row that is the same as
         # the original input
-        self.import_dump(result)
+        self.import_dump()
         
         owners = self.get_owners()
         self.assertEquals(1, len(owners))
@@ -192,9 +202,9 @@ class TestImport(unittest.TestCase):
             row['name'] = row['name'][0:2] + "******"
             return row
         callbacks = { 'owner': owner_callback }
-        result = self.do_partial_dump({}, 'owner', 'id=1', row_callbacks=callbacks)
+        self.do_partial_dump({}, 'owner', 'id=1', row_callbacks=callbacks)
 
-        self.import_dump(result)
+        self.import_dump()
         
         owners = self.get_owners()
         self.assertEquals(1, len(owners))
@@ -202,11 +212,10 @@ class TestImport(unittest.TestCase):
 
     def test_empty_string(self):
         self.create_owner(1, '')
-        result = self.do_partial_dump({}, 'owner', 'id=1')
+        self.do_partial_dump({}, 'owner', 'id=1')
 
         # An empty string should import correctly and not be saved as NULL
-        print result
-        self.import_dump(result)
+        self.import_dump()
         
         owners = self.get_owners()
         self.assertEquals(1, len(owners))
@@ -217,14 +226,35 @@ class TestImport(unittest.TestCase):
         # We need to test it though to ensure bulk inserts work
         for a in xrange(1, 101):
             self.create_owner(a, 'Bob')
-        result = self.do_partial_dump({}, 'owner', '1=1')
+        self.do_partial_dump({}, 'owner', '1=1')
 
         # Reimporting the result should give a single row that is the same as
         # the original input
-        self.import_dump(result)
+        self.import_dump()
         
         owners = self.get_owners()
         self.assertEquals(100, len(owners))
+
+    def test_many_rows_two_chunks(self):
+        # Creating two chunks and importing them should work fine
+        for x in xrange(1, 201):
+            self.create_owner(x, 'Bob')
+            self.create_pet(x, 'Ginger', parent_id=None, owner_id=x)
+        relations = set([
+            (('pet', 'owner_id'), ('owner', 'id')),
+        ])
+
+        self.do_partial_dump(relations, 'owner', '1=1', chunks=2)
+        self.import_dump(chunks=2)
+
+        self.assertEquals(200, len(self.get_owners()))
+        self.assertEquals(200, len(self.get_pets()))
+
+        # The two files should be fairly sizable
+        size1 = os.path.getsize("%s.%d"%(TEST_OUTPUT_PREFIX, 0))
+        size2 = os.path.getsize("%s.%d"%(TEST_OUTPUT_PREFIX, 0))
+        self.assertTrue(size1 > 1000)
+        self.assertTrue(size2 > 1000)
 
     def test_forward_reference(self):
         # A reference from X to Y should cause Y be pulled in if X is pulled in
@@ -233,11 +263,11 @@ class TestImport(unittest.TestCase):
         relations = set([
             (('owner', 'id'), ('pet', 'owner_id')),
         ])
-        result = self.do_partial_dump(relations, 'owner', '1=1')
+        self.do_partial_dump(relations, 'owner', '1=1')
 
         # Reimporting the result should give a single row that is the same as
         # the original input
-        self.import_dump(result)
+        self.import_dump()
         
         owners = self.get_owners()
         self.assertEquals(1, len(owners))
@@ -256,11 +286,11 @@ class TestImport(unittest.TestCase):
         relations = set([
             (('owner', 'id'), ('pet', 'owner_id')),
         ])
-        result = self.do_partial_dump(relations, 'owner', '1=1')
+        self.do_partial_dump(relations, 'owner', '1=1')
 
         # Reimporting the result should give a single row that is the same as
         # the original input
-        self.import_dump(result)
+        self.import_dump()
         
         pets = self.get_pets()
         self.assertEquals(2, len(pets))
@@ -278,11 +308,11 @@ class TestImport(unittest.TestCase):
         relations = set([
             (('pet', 'owner_id'), ('owner', 'id')),
         ])
-        result = self.do_partial_dump(relations, 'owner', '1=1')
+        self.do_partial_dump(relations, 'owner', '1=1')
 
         # Reimporting the result should give a single row that is the same as
         # the original input
-        self.import_dump(result)
+        self.import_dump()
         
         owners = self.get_owners()
         self.assertEquals(1, len(owners))
@@ -303,8 +333,8 @@ class TestImport(unittest.TestCase):
         relations = set([
             (('pet', 'owner_id'), ('owner', 'id'), UNIDIRECTIONAL),
         ])
-        result = self.do_partial_dump(relations, 'owner', '1=1')
-        self.import_dump(result)
+        self.do_partial_dump(relations, 'owner', '1=1')
+        self.import_dump()
         self.assertEquals(1, len(self.get_owners()))
         self.assertEquals(0, len(self.get_pets()))
 
@@ -318,8 +348,8 @@ class TestImport(unittest.TestCase):
         relations = set([
             (('pet', 'owner_id'), ('owner', 'id'), UNIDIRECTIONAL),
         ])
-        result = self.do_partial_dump(relations, 'pet', '1=1')
-        self.import_dump(result)
+        self.do_partial_dump(relations, 'pet', '1=1')
+        self.import_dump()
         self.assertEquals(1, len(self.get_owners()))
         self.assertEquals(1, len(self.get_pets()))
  
@@ -332,11 +362,11 @@ class TestImport(unittest.TestCase):
         relations = set([
             ('pet', get_logs_relationship)
         ])
-        result = self.do_partial_dump(relations, 'pet', '1=1')
+        self.do_partial_dump(relations, 'pet', '1=1')
 
         # Reimporting the result should give a single row that is the same as
         # the original input
-        self.import_dump(result)
+        self.import_dump()
         
         logs = self.get_logs()
         self.assertEquals(1, len(logs))
@@ -352,11 +382,11 @@ class TestImport(unittest.TestCase):
         relations = set([
             ('pet', get_logs_relationship)
         ])
-        result = self.do_partial_dump(relations, 'pet', '1=1')
+        self.do_partial_dump(relations, 'pet', '1=1')
 
         # Reimporting the result should give a single row that is the same as
         # the original input
-        self.import_dump(result)
+        self.import_dump()
         
         self.assertEquals(1, len(self.get_pets()))
         self.assertEquals(0, len(self.get_logs()))
@@ -369,8 +399,8 @@ class TestImport(unittest.TestCase):
         relations = set([
             (('pet', 'owner_id'), ('owner', 'id')),
         ])
-        result = self.do_partial_dump(relations, 'owner', '1=1')
-        self.import_dump(result)
+        self.do_partial_dump(relations, 'owner', '1=1')
+        self.import_dump()
        
         self.assertEquals(200, len(self.get_owners()))
         self.assertEquals(200, len(self.get_pets()))
@@ -393,7 +423,7 @@ class TestImport(unittest.TestCase):
         dumper.Dumper.get_table = mock_get_table
 
         try:
-            result = self.do_partial_dump(relations, 'owner', '1=1')
+            self.do_partial_dump(relations, 'owner', '1=1')
 
             # Only two tables, should only get called twice!
             self.assertEquals(2, mock_get_table.call_count)
@@ -407,11 +437,11 @@ class TestImport(unittest.TestCase):
                 'pet':(['id'], set()),
                 'log':(['id'], set()),
         }
-        result = self.do_partial_dump({}, 'owner', 'id=1', pks=pks)
+        self.do_partial_dump({}, 'owner', 'id=1', pks=pks)
 
         # Importing the result twice should result in a single row
-        self.import_dump(result)
-        self.import_dump(result, clear=False)
+        self.import_dump()
+        self.import_dump(clear=False)
         
         owners = self.get_owners()
         self.assertEquals(1, len(owners))
@@ -425,10 +455,13 @@ class TestImport(unittest.TestCase):
         relations = set([
             (('owner', 'id'), ('pet', 'owner_id'), None, 1),
         ])
-        result = self.do_partial_dump(relations, 'owner', '1=1')
+        self.do_partial_dump(relations, 'owner', '1=1')
 
         # Each owner should result in a distinct insert into the pet table
-        self.import_dump(result)
+        self.import_dump()
+        f = open("%s.%d"%(TEST_OUTPUT_PREFIX, 0), 'r')
+        result = f.read()
+        f.close()
         self.assertEquals(1 + 2, result.count('INSERT'))
 
     def test_simple_pks(self):
@@ -438,17 +471,17 @@ class TestImport(unittest.TestCase):
                 'pet':['id'],
                 'log':['id'],
         }
-        result = self.do_partial_dump({}, 'owner', 'id=1', pks=pks)
+        self.do_partial_dump({}, 'owner', 'id=1', pks=pks)
 
     def test_end_sql(self):
         self.create_owner(1, 'Bob')
-        result = self.do_partial_dump({}, 'owner', 'id=1', end_sql="""
+        self.do_partial_dump({}, 'owner', 'id=1', end_sql="""
         INSERT INTO owner(name) VALUES('Alan');
         """)
 
         # Reimporting the result should give a single row that is the same as
         # the original input
-        self.import_dump(result)
+        self.import_dump()
         
         owners = self.get_owners()
         self.assertEquals(2, len(owners))

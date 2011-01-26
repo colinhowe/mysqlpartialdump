@@ -38,7 +38,6 @@ def escape(value):
 class Dumper(object):
     def __init__(
             self,
-            result,
             relationships,
             pks,
             callbacks,
@@ -50,9 +49,10 @@ class Dumper(object):
             start_table,
             start_where,
             start_args=[],
-            end_sql=''
+            end_sql='',
+            chunks=1,
+            output_prefix='dump.sql'
             ):
-        self.result = codecs.getwriter('utf8')(result)
         self.relationships = relationships
         self.pks = pks
         self.callbacks = callbacks
@@ -66,10 +66,27 @@ class Dumper(object):
         self.start_args = start_args
         self.end_sql = end_sql
         self.batch_sizes = {}
+        self.chunks = chunks
+        self.output_prefix = output_prefix
 
         self.cached_schemas = {}
 
+    def get_writer(self):
+        # Get the smallest writer
+        writers_with_size = []
+        for writer in self.writers:
+            writers_with_size.append((writer, writer.tell()))
+        return sorted(writers_with_size, key=lambda t: t[1])[0][0]
+
     def go(self):
+        self.writers = []
+        for chunk in range(self.chunks):
+            writer = open("%s.%d"%(self.output_prefix, chunk), 'w')
+            self.writers.append(writer)
+            writer.write('SET FOREIGN_KEY_CHECKS=0;\n')
+
+        result = self.get_writer()
+
         # PKs can be passed in as either a list of columns or a tuple containing a
         # list of columns and a set of options.
         # To make things simpler later we sanitise the PKs now
@@ -133,17 +150,17 @@ class Dumper(object):
         self.cursor.execute('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ')
         self.cursor.execute('START TRANSACTION')
      
-        self.result.write('START TRANSACTION;\n')
-        self.result.write('SET FOREIGN_KEY_CHECKS=0;\n')
         self.get_table(self.start_table, where=self.start_where, where_args=self.start_args)
-        self.result.write('SET FOREIGN_KEY_CHECKS=1;\n')
-        self.result.write('COMMIT;\n')
         
         self.cursor.execute('ROLLBACK')
         self.cursor.close()
         db.close()
 
-        self.result.write(self.end_sql)
+        result.write(self.end_sql)
+
+        for writer in self.writers:
+            writer.write('SET FOREIGN_KEY_CHECKS=1;\n')
+            writer.close()
 
     def _get_schema(self, table_name):
         '''Gets the schema of the given table. Will call to the database to
@@ -217,6 +234,7 @@ class Dumper(object):
 
     def get_table(self, table_name, where=None, where_args=[]):
         info('Exploring %s with where %s and args %s'%(table_name, where, where_args))
+        result = self.get_writer()
         
         (safe_field_names, unsafe_field_names, field_offsets) = self._get_schema(table_name)
 
@@ -243,7 +261,7 @@ class Dumper(object):
             if not rows:
                 continue
             
-            self.result.write('INSERT %s INTO %s(%s) VALUES'%(
+            result.write('INSERT %s INTO %s(%s) VALUES'%(
                 "IGNORE" if allow_duplicates else "",
                 table_name, 
                 ",".join(safe_field_names)))
@@ -257,8 +275,8 @@ class Dumper(object):
                     row = [row_dict[unsafe_field_names[i]] for i in range(len(row))]
                 row_strings.append(
                     '(%s)'%",".join(["'%s'"%escape(value) if value is not None else 'NULL' for value in row]))
-            self.result.write(",\n".join(row_strings))
-            self.result.write(';\n')
+            result.write(",\n".join(row_strings))
+            result.write(';\n')
 
             for callback in self.relationships.get(table_name, set()):
                 for row in rows:
@@ -285,13 +303,17 @@ class Dumper(object):
 
 if __name__ == "__main__":
 
-    optlist, args = getopt.getopt(sys.argv[1:], 'di')
+    optlist, args = getopt.getopt(sys.argv[1:], 'dic:o:')
 
     for o, a in optlist:
         if o == '-d':
             DEBUG_LEVEL = LOG_DEBUG
         if o == '-i':
             DEBUG_LEVEL = LOG_INFO
+        if o == '-c':
+            chunks = int(a)
+        if o == '-o':
+            output_prefix = a
 
     configuration_file = args[0]
     try:
@@ -309,7 +331,9 @@ if __name__ == "__main__":
                 m.start_table,
                 m.start_where,
                 m.start_args,
-                m.end_sql).go()
+                m.end_sql,
+                output_prefix,
+                chunks).go()
     except ImportError, e:
         print 'Failed to import %s:'%configuration_file
         print e
