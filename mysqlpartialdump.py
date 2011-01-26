@@ -6,8 +6,8 @@ from sys import stderr
 from datetime import datetime
 import codecs
 
-BULK_INSERT_SIZE = 500
-FOLLOW_SIZE = 500
+BULK_INSERT_SIZE = 5000
+FOLLOW_SIZE = 5000
 
 LOG_NONE = 0
 LOG_INFO = 1
@@ -130,6 +130,7 @@ class Dumper(object):
                 charset='utf8',
                 cursorclass=cursors.SSCursor)
         self.cursor = db.cursor()
+        self.cursor.execute('SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ')
         self.cursor.execute('START TRANSACTION')
      
         self.result.write('START TRANSACTION;\n')
