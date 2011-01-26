@@ -82,6 +82,7 @@ class Dumper(object):
         self.writers = []
         for chunk in range(self.chunks):
             writer = open("%s.%d"%(self.output_prefix, chunk), 'w')
+            writer = codecs.getwriter('utf8')(writer)
             self.writers.append(writer)
             writer.write('SET FOREIGN_KEY_CHECKS=0;\n')
 
@@ -319,7 +320,6 @@ if __name__ == "__main__":
     try:
         m = __import__(configuration_file)
         Dumper(
-                sys.stdout, 
                 m.relationships, 
                 m.pks, 
                 m.callbacks,
@@ -332,8 +332,8 @@ if __name__ == "__main__":
                 m.start_where,
                 m.start_args,
                 m.end_sql,
-                output_prefix,
-                chunks).go()
+                chunks,
+                output_prefix).go()
     except ImportError, e:
         print 'Failed to import %s:'%configuration_file
         print e
