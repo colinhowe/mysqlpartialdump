@@ -14,7 +14,7 @@ LOG_INFO = 1
 LOG_DEBUG = 2
 DEBUG_LEVEL = LOG_NONE
 
-UNIDIRECTIONAL = 'unidirectional'
+BIDIRECTIONAL = 'bidirectional'
 ALLOW_DUPLICATES = 'allow duplicates'
 NO_KEY_CACHE = 'no key cache'
 
@@ -125,7 +125,7 @@ class Dumper(object):
                     callback.batch_size = relationship[3]
 
                 # The back link must also be setup for bidirectional links
-                if len(relationship) == 2 or relationship[2] != UNIDIRECTIONAL:
+                if len(relationship) != 2 and relationship[2] == BIDIRECTIONAL:
                     rels[target_name] = rels.get(target_name, set())
                     rels[target_name].add(create_callback(src_name, src[1], target[1]))
         self.relationships = rels

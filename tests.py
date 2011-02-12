@@ -2,7 +2,7 @@ import MySQLdb
 import unittest
 import mysqlpartialdump as dumper
 from cStringIO import StringIO
-from mysqlpartialdump import UNIDIRECTIONAL, ALLOW_DUPLICATES
+from mysqlpartialdump import BIDIRECTIONAL, ALLOW_DUPLICATES
 from mysqlpartialdump import Pk
 import os.path
 
@@ -242,7 +242,7 @@ class TestImport(unittest.TestCase):
             self.create_owner(x, 'Bob')
             self.create_pet(x, 'Ginger', parent_id=None, owner_id=x)
         relations = set([
-            (('pet', 'owner_id'), ('owner', 'id')),
+            (('pet', 'owner_id'), ('owner', 'id'), BIDIRECTIONAL),
         ])
 
         self.do_partial_dump(relations, 'owner', '1=1', chunks=2)
@@ -307,7 +307,7 @@ class TestImport(unittest.TestCase):
         self.create_owner(1, 'Bob')
         self.create_pet(1, 'Ginger', parent_id=None, owner_id=1)
         relations = set([
-            (('pet', 'owner_id'), ('owner', 'id')),
+            (('pet', 'owner_id'), ('owner', 'id'), BIDIRECTIONAL),
         ])
         self.do_partial_dump(relations, 'owner', '1=1')
 
@@ -332,7 +332,7 @@ class TestImport(unittest.TestCase):
         self.create_pet(1, 'Ginger', parent_id=None, owner_id=1)
 
         relations = set([
-            (('pet', 'owner_id'), ('owner', 'id'), UNIDIRECTIONAL),
+            (('pet', 'owner_id'), ('owner', 'id')),
         ])
         self.do_partial_dump(relations, 'owner', '1=1')
         self.import_dump()
@@ -347,7 +347,7 @@ class TestImport(unittest.TestCase):
         self.create_pet(1, 'Ginger', parent_id=None, owner_id=1)
 
         relations = set([
-            (('pet', 'owner_id'), ('owner', 'id'), UNIDIRECTIONAL),
+            (('pet', 'owner_id'), ('owner', 'id')),
         ])
         self.do_partial_dump(relations, 'pet', '1=1')
         self.import_dump()
@@ -398,7 +398,7 @@ class TestImport(unittest.TestCase):
             self.create_owner(x, 'Bob')
             self.create_pet(x, 'Ginger', parent_id=None, owner_id=x)
         relations = set([
-            (('pet', 'owner_id'), ('owner', 'id')),
+            (('pet', 'owner_id'), ('owner', 'id'), BIDIRECTIONAL),
         ])
         self.do_partial_dump(relations, 'owner', '1=1')
         self.import_dump()
@@ -412,7 +412,7 @@ class TestImport(unittest.TestCase):
         self.create_owner(1, 'Bob')
         self.create_pet(1, 'Ginger', parent_id=None, owner_id=1)
         relations = set([
-            (('pet', 'owner_id'), ('owner', 'id')),
+            (('pet', 'owner_id'), ('owner', 'id'), BIDIRECTIONAL),
         ])
 
         # Mock out the get_table method so we can track how often it is called
