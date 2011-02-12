@@ -3,7 +3,7 @@ import unittest
 import mysqlpartialdump as dumper
 from cStringIO import StringIO
 from mysqlpartialdump import BIDIRECTIONAL, ALLOW_DUPLICATES
-from mysqlpartialdump import Pk
+from mysqlpartialdump import Pk, From, CustomRelationship
 import os.path
 
 def init_connection():
@@ -241,9 +241,9 @@ class TestImport(unittest.TestCase):
         for x in xrange(1, 201):
             self.create_owner(x, 'Bob')
             self.create_pet(x, 'Ginger', parent_id=None, owner_id=x)
-        relations = set([
-            (('pet', 'owner_id'), ('owner', 'id'), BIDIRECTIONAL),
-        ])
+        relations = [
+            From('pet', 'owner_id').to('owner', 'id').bidirectional(),
+        ]
 
         self.do_partial_dump(relations, 'owner', '1=1', chunks=2)
         self.import_dump(chunks=2)
@@ -261,9 +261,9 @@ class TestImport(unittest.TestCase):
         # A reference from X to Y should cause Y be pulled in if X is pulled in
         self.create_owner(1, 'Bob')
         self.create_pet(1, 'Ginger', parent_id=None, owner_id=1)
-        relations = set([
-            (('owner', 'id'), ('pet', 'owner_id')),
-        ])
+        relations = [
+            From('owner', 'id').to('pet', 'owner_id'),
+        ]
         self.do_partial_dump(relations, 'owner', '1=1')
 
         # Reimporting the result should give a single row that is the same as
@@ -284,9 +284,9 @@ class TestImport(unittest.TestCase):
         self.create_owner(1, 'Bob')
         self.create_pet(1, 'Ginger', parent_id=None, owner_id=1)
         self.create_pet(2, 'Tabby', parent_id=None, owner_id=1)
-        relations = set([
-            (('owner', 'id'), ('pet', 'owner_id')),
-        ])
+        relations = [
+            From('owner', 'id').to('pet', 'owner_id'),
+        ]
         self.do_partial_dump(relations, 'owner', '1=1')
 
         # Reimporting the result should give a single row that is the same as
@@ -306,9 +306,9 @@ class TestImport(unittest.TestCase):
         # A reference from X to Y should cause X be pulled in if Y is pulled in
         self.create_owner(1, 'Bob')
         self.create_pet(1, 'Ginger', parent_id=None, owner_id=1)
-        relations = set([
-            (('pet', 'owner_id'), ('owner', 'id'), BIDIRECTIONAL),
-        ])
+        relations = [
+            From('pet', 'owner_id').to('owner', 'id').bidirectional(),
+        ]
         self.do_partial_dump(relations, 'owner', '1=1')
 
         # Reimporting the result should give a single row that is the same as
@@ -331,9 +331,9 @@ class TestImport(unittest.TestCase):
         self.create_owner(1, 'Bob')
         self.create_pet(1, 'Ginger', parent_id=None, owner_id=1)
 
-        relations = set([
-            (('pet', 'owner_id'), ('owner', 'id')),
-        ])
+        relations = [
+            From('pet', 'owner_id').to('owner', 'id'),
+        ]
         self.do_partial_dump(relations, 'owner', '1=1')
         self.import_dump()
         self.assertEquals(1, len(self.get_owners()))
@@ -346,9 +346,9 @@ class TestImport(unittest.TestCase):
         self.create_owner(1, 'Bob')
         self.create_pet(1, 'Ginger', parent_id=None, owner_id=1)
 
-        relations = set([
-            (('pet', 'owner_id'), ('owner', 'id')),
-        ])
+        relations = [
+            From('pet', 'owner_id').to('owner', 'id'),
+        ]
         self.do_partial_dump(relations, 'pet', '1=1')
         self.import_dump()
         self.assertEquals(1, len(self.get_owners()))
@@ -359,10 +359,10 @@ class TestImport(unittest.TestCase):
         self.create_pet(1, 'Ginger', parent_id=None, owner_id=1)
         self.create_log(1, 'Pet1', 'Hello')
         def get_logs_relationship(row):
-            return ('log', ('entity', 'Pet%s'%row['id']))
-        relations = set([
-            ('pet', get_logs_relationship)
-        ])
+            return ('log', [('entity', 'Pet%s'%row['id'])])
+        relations = [
+            CustomRelationship('pet', get_logs_relationship)
+        ]
         self.do_partial_dump(relations, 'pet', '1=1')
 
         # Reimporting the result should give a single row that is the same as
@@ -380,9 +380,9 @@ class TestImport(unittest.TestCase):
         self.create_log(1, 'Pet1', 'Hello')
         def get_logs_relationship(row):
             return None
-        relations = set([
-            ('pet', get_logs_relationship)
-        ])
+        relations = [
+            CustomRelationship('pet', get_logs_relationship)
+        ]
         self.do_partial_dump(relations, 'pet', '1=1')
 
         # Reimporting the result should give a single row that is the same as
@@ -397,9 +397,9 @@ class TestImport(unittest.TestCase):
         for x in xrange(1, 201):
             self.create_owner(x, 'Bob')
             self.create_pet(x, 'Ginger', parent_id=None, owner_id=x)
-        relations = set([
-            (('pet', 'owner_id'), ('owner', 'id'), BIDIRECTIONAL),
-        ])
+        relations = [
+            From('pet', 'owner_id').to('owner', 'id').bidirectional(),
+        ]
         self.do_partial_dump(relations, 'owner', '1=1')
         self.import_dump()
        
@@ -411,9 +411,9 @@ class TestImport(unittest.TestCase):
         # should stop it
         self.create_owner(1, 'Bob')
         self.create_pet(1, 'Ginger', parent_id=None, owner_id=1)
-        relations = set([
-            (('pet', 'owner_id'), ('owner', 'id'), BIDIRECTIONAL),
-        ])
+        relations = [
+            From('pet', 'owner_id').to('owner', 'id').bidirectional(),
+        ]
 
         # Mock out the get_table method so we can track how often it is called
         original_get_table = dumper.Dumper.get_table
@@ -453,9 +453,9 @@ class TestImport(unittest.TestCase):
         self.create_owner(2, 'Bob')
         self.create_pet(1, 'Ginger', parent_id=None, owner_id=1)
         self.create_pet(2, 'Tabby', parent_id=None, owner_id=2)
-        relations = set([
-            (('owner', 'id'), ('pet', 'owner_id'), None, 1),
-        ])
+        relations = [
+            From('owner', 'id').to('pet', 'owner_id').in_batches(1),
+        ]
         self.do_partial_dump(relations, 'owner', '1=1')
 
         # Each owner should result in a distinct insert into the pet table

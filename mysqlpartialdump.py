@@ -40,6 +40,72 @@ class Pk(object):
         self.columns = columns
         self.options = set(options)
 
+class CustomRelationship(object):
+    def __init__(self, from_table, callback):
+        self.from_table = from_table
+        self.callback = callback
+
+    def create_callbacks(self):
+        return [(self.from_table, self.callback)]
+
+class Relationship(object):
+    def __init__(self, 
+            from_table, from_columns, 
+            to_table=None, to_columns=None,
+            batch_size=FOLLOW_SIZE):
+        self.from_table = from_table
+        self.from_columns = from_columns
+        self.to_table = to_table
+        self.to_columns = to_columns
+        self.options = set()
+        self.batch_size = batch_size
+
+    def to(self, to_table, *to_columns):
+        self.to_table = to_table
+        self.to_columns = to_columns
+        return self
+
+    def bidirectional(self):
+        self.options.add(BIDIRECTIONAL)
+        return self
+
+    def in_batches(self, batch_size):
+        self.batch_size = batch_size
+        return self
+
+    def create_callbacks(self):
+        callbacks = []
+        def create_callback(from_columns, to_table, to_columns):
+            def callback(row):
+                col_pairs = zip(from_columns, to_columns)
+                target = [(to_col, row[src_col]) 
+                          for (src_col, to_col) in col_pairs]
+                return (to_table, target)
+            callback.batch_size = self.batch_size
+            return callback
+
+        callback = create_callback(self.from_columns, 
+                                   self.to_table, self.to_columns)
+        callbacks.append((self.from_table, callback))
+        
+        if BIDIRECTIONAL in self.options:
+            callback = create_callback(self.to_columns, 
+                                       self.from_table, self.from_columns)
+            callbacks.append((self.to_table, callback))
+
+        return callbacks
+
+    def __str__(self):
+        return "%s %s -> %s %s [%s]"%(
+                self.from_table, self.from_columns,
+                self.to_table, self.to_columns,
+                self.options)
+
+
+def From(table, *columns):
+    '''Starting point for a DSL to create relationships'''
+    return Relationship(table, columns)
+
 class Dumper(object):
     def __init__(
             self,
@@ -94,40 +160,15 @@ class Dumper(object):
         result = self.get_writer()
         self.pks_seen = dict([(name, set()) for name in self.pks.keys()])
 
-        # The relationships are stored as:
-        #   { (table_name, col): (table_name, col) }
-        # This isn't convenient for quick lookup based on table. So, create a
-        # new dictionary that looks like:
-        #   { table_name: { (col): (table_name, col) } }
+        # Storing the relationships as:
+        #   { table_name: callback }
+        # Would be a lot quicker than keeping it in a list
         rels = {}
         for relationship in self.relationships:
-            src = relationship[0]
-            target = relationship[1]
-            if isinstance(src, basestring):
-                rels[src] = rels.get(src, set())
-                rels[src].add(target)
-            else:
-                def create_callback(target_table, target_col, src_col):
-                    target_col = '%s'%target_col
-                    src_col = '%s'%src_col
-                    def callback(row):
-                        return (target_table, (target_col, row[src_col]))
-                    return callback
-
-                src_name = src[0]
-                target_name = target[0]
-                
-                rels[src_name] = rels.get(src_name, set())
-                callback = create_callback(target_name, target[1], src[1])
-                rels[src_name].add(callback)
-
-                if len(relationship) == 4:
-                    callback.batch_size = relationship[3]
-
-                # The back link must also be setup for bidirectional links
-                if len(relationship) != 2 and relationship[2] == BIDIRECTIONAL:
-                    rels[target_name] = rels.get(target_name, set())
-                    rels[target_name].add(create_callback(src_name, src[1], target[1]))
+            for (table, callback) in relationship.create_callbacks():
+                table_rels = rels.get(table, set())
+                table_rels.add(callback)
+                rels[table] = table_rels
         self.relationships = rels
 
         db = MySQLdb.connect(
@@ -279,7 +320,7 @@ class Dumper(object):
                     if r is None:
                         continue
                     target_name = r[0]
-                    keys = r[1:]
+                    keys = r[1]
                     to_follow[target_name] = to_follow.get(target_name, dict())
                     field_names = tuple([field_name for (field_name, _) in keys])
                     follow_set = to_follow[target_name].get(field_names, set())
