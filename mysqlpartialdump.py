@@ -35,6 +35,11 @@ def escape(value):
         return str(value)
     return value.replace("'", "''").replace("\\", "\\\\")
 
+class Pk(object):
+    def __init__(self, columns, *options):
+        self.columns = columns
+        self.options = set(options)
+
 class Dumper(object):
     def __init__(
             self,
@@ -87,20 +92,6 @@ class Dumper(object):
             writer.write('SET FOREIGN_KEY_CHECKS=0;\n')
 
         result = self.get_writer()
-
-        # PKs can be passed in as either a list of columns or a tuple containing a
-        # list of columns and a set of options.
-        # To make things simpler later we sanitise the PKs now
-        new_pks = {}
-        for table_name, keys in self.pks.iteritems():
-            if isinstance(keys, list):
-                new_pks[table_name] = (tuple(keys), set())
-            elif len(keys) == 1:
-                new_pks[table_name] = (tuple(keys[0]), set())
-            else:
-                new_pks[table_name] = (tuple(keys[0]), keys[1])
-
-        self.pks = new_pks
         self.pks_seen = dict([(name, set()) for name in self.pks.keys()])
 
         # The relationships are stored as:
@@ -185,7 +176,7 @@ class Dumper(object):
             follow_sets_keys = list(follow_sets.keys())
             for field_names in follow_sets_keys:
                 value_sets = follow_sets[field_names]
-                if field_names == self.pks[table][0]:
+                if field_names == tuple(self.pks[table].columns):
                     values = []
                     for value_tuple in value_sets:
                         if value_tuple not in self.pks_seen[table]:
@@ -213,7 +204,7 @@ class Dumper(object):
 
     def get_pk(self, table_name, row):
         (_, _, field_offsets) = self._get_schema(table_name)
-        return tuple([row[field_offsets[field]] for field in self.pks[table_name][0]])
+        return tuple([row[field_offsets[field]] for field in self.pks[table_name].columns])
 
     def is_row_seen(self, table_name, row):
         pk = self.get_pk(table_name, row)
@@ -226,7 +217,7 @@ class Dumper(object):
 
     def add_row(self, table_name, row):
         pk = self.get_pk(table_name, row)
-        if NO_KEY_CACHE in self.pks[table_name][1]:
+        if NO_KEY_CACHE in self.pks[table_name].options:
             return True
         if pk in self.pks_seen[table_name]:
             return False
@@ -247,7 +238,7 @@ class Dumper(object):
                 ), where_args)
 
         to_follow = {}
-        options = self.pks[table_name][1]
+        options = self.pks[table_name].options
         allow_duplicates = ALLOW_DUPLICATES in options
         while True:
             rows = list(self.cursor.fetchmany(BULK_INSERT_SIZE))

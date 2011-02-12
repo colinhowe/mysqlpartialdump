@@ -3,6 +3,7 @@ import unittest
 import mysqlpartialdump as dumper
 from cStringIO import StringIO
 from mysqlpartialdump import UNIDIRECTIONAL, ALLOW_DUPLICATES
+from mysqlpartialdump import Pk
 import os.path
 
 def init_connection():
@@ -82,9 +83,9 @@ class TestImport(unittest.TestCase):
         '''Helper method to make running a dump a bit tidier in tests'''
         if not pks:
             pks = {
-                    'owner':(['id'],),
-                    'pet':(['id'],),
-                    'log':(['id'],),
+                'owner': Pk(['id']),
+                'pet': Pk(['id']),
+                'log': Pk(['id']),
             }
         import test_config
         dump = dumper.Dumper(
@@ -433,9 +434,9 @@ class TestImport(unittest.TestCase):
     def test_allow_duplicates(self):
         self.create_owner(1, 'Bob')
         pks = {
-                'owner':(['id'], set([ALLOW_DUPLICATES])),
-                'pet':(['id'], set()),
-                'log':(['id'], set()),
+                'owner':Pk(['id'], ALLOW_DUPLICATES),
+                'pet':Pk(['id']),
+                'log':Pk(['id']),
         }
         self.do_partial_dump({}, 'owner', 'id=1', pks=pks)
 
@@ -467,9 +468,9 @@ class TestImport(unittest.TestCase):
     def test_simple_pks(self):
         self.create_owner(1, 'Bob')
         pks = {
-                'owner':['id'],
-                'pet':['id'],
-                'log':['id'],
+                'owner':Pk(['id']),
+                'pet':Pk(['id']),
+                'log':Pk(['id']),
         }
         self.do_partial_dump({}, 'owner', 'id=1', pks=pks)
 
