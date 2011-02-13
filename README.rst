@@ -1,6 +1,6 @@
-===========
+================
 MySQLPartialDump
-===========
+================
 :Info: MySQLPartialDump is a tool for MySQL that makes it easier to dump a 
 section of a database in a meaningful way.
 :Author: Colin Howe (http://github.com/colinhowe)
@@ -15,7 +15,6 @@ Dependencies
 ============
 python-MySQLdb
 
-========
 Tutorial
 ========
 
