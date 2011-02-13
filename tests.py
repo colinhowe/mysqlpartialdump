@@ -416,12 +416,12 @@ class TestImport(unittest.TestCase):
         ]
 
         # Mock out the get_table method so we can track how often it is called
-        original_get_table = dumper.Dumper.get_table
+        original_get_table = dumper.Dumper._get_table
         def mock_get_table(*args, **kwargs):
             mock_get_table.call_count += 1
             original_get_table(*args, **kwargs)
         mock_get_table.call_count = 0
-        dumper.Dumper.get_table = mock_get_table
+        dumper.Dumper._get_table = mock_get_table
 
         try:
             self.do_partial_dump(relations, 'owner', '1=1')
@@ -448,15 +448,19 @@ class TestImport(unittest.TestCase):
         self.assertEquals(1, len(owners))
         self.assertEquals('Bob', owners[1]['name'])
 
-    def test_limit_relationship_batch_size(self):
+    def test_batch_size(self):
         self.create_owner(1, 'Alan')
         self.create_owner(2, 'Bob')
         self.create_pet(1, 'Ginger', parent_id=None, owner_id=1)
         self.create_pet(2, 'Tabby', parent_id=None, owner_id=2)
+        pks = {
+                'owner':Pk(['id']).in_batches(1),
+                'pet':Pk(['id']),
+        }
         relations = [
-            From('owner', 'id').to('pet', 'owner_id').in_batches(1),
+            From('owner', 'id').to('pet', 'owner_id'),
         ]
-        self.do_partial_dump(relations, 'owner', '1=1')
+        self.do_partial_dump(relations, 'owner', '1=1', pks=pks)
 
         # Each owner should result in a distinct insert into the pet table
         self.import_dump()
