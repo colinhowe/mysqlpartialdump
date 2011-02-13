@@ -308,6 +308,12 @@ a callback::
         else:
             return None
 
+Then to specify this as a relationship you can use CustomRelationship::
+
+    relationships = [
+        CustomRelationship('Product', get_product_rel),
+    ]
+
 Controlling the output prefix
 -----------------------------
 
