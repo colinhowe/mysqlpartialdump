@@ -23,25 +23,30 @@ as a SQL dump so that you can import it locally and do some testing with real
 data.
 
 For the example, the customer table has these columns:
+
 * id - The unique ID for each customer
 * email address - The e-mail address of the customer
 
 The order table has these columns:
+
 * id - The ID of the order
 * customer_id - A reference back to the customer table for the customer that
   placed this order
 
 Each order can have multiple items on it. These are represented as OrderLines:
+
 * id - ID of the line
 * order_id - The owning order
 * product_id - The product for this line
 * quantity - The amount of product
 
 The product table has these columns:
+
 * id - ID of the product
 * name - Name of the product
 
 Create these tables in your local database with the following SQL::
+
     CREATE DATABASE `dumper_tutorial` CHARACTER SET utf8 COLLATE utf8_general_ci;
     USE `dumper_tutorial`;
     CREATE TABLE `dumper_tutorial`.`Customer`(
@@ -65,6 +70,7 @@ Create these tables in your local database with the following SQL::
 
 To get you started here is some SQL to populate the database with two customers
 and some orders orders::
+
     USE `dumper_tutorial`;
     INSERT INTO `Customer`(`id`, `email`) VALUES
         (1, 'colin@mailinator.com'),
@@ -91,6 +97,7 @@ MySQLPartialDump needs you to tell it how to crawl the database. You do this
 with a dump schema written in Python.
 
 A simple schema for the above would be::
+
     from mysqlpartialdump import Pk, From
 
     pks = {
@@ -119,6 +126,7 @@ This is in the git repo as tut-schema-1.py.
 
 You will need to set your database details at the top of the schema. You 
 can then run a dump like so::
+
     python mysqlpartialdump.py -u <username> -s <password> -d dumper_tutorial tut-schema-1.py
 
 This will create an SQL dump called dump.sql.0 that contains only the
@@ -128,12 +136,14 @@ Selecting the start points
 --------------------------
 
 The start point for a crawl of the database is controlled by three variables:
+
 * start_table
 * start_where
 * start_args
 
 These can be used together to get any set of rows from a single table. 
 Try changing them to be::
+
     start_where = '1=1'
     start_args = []
 
@@ -145,6 +155,7 @@ Specifying relationships
 Relationships are all stored in the relationships variable and are written 
 using a simple DSL. By default all relationships go in one direction. Try
 this::
+
     start_table = 'Product'
     start_where = '1=1'
     start_args = []
@@ -152,6 +163,7 @@ this::
 This will give you a table of all the products but won't give you any orders
 for the products. To make this work you have to make the relationships
 bidirectional::
+
     relationships = [
         From('Customer', 'id').to('Order', 'customer_id').bidirectional(),
         From('Order', 'id').to('OrderLine', 'order_id').bidirectional(),
@@ -171,11 +183,13 @@ with e-mail addresses. This is the sort of thing that can lead to disaster!
 This is where the callbacks section comes in handy. You can create a callback
 to make the e-mail addresses safe to distribute. Add the following to your
 schema (a full copy is in tut-schema-3.py)::
+
     def clean_email(row):
         row['email'] = "%s%d"%(row['email'][:3], hash(row['email']))
         return row
 
 Then alter callbacks to be::
+
     callbacks = {
         'Customer': clean_email,
     }
@@ -190,6 +204,7 @@ Batch sizes
 Some tables can be quite wide and doing bulk inserts to these tables may need
 fine tuning. To do this you specify a batch size when creating the primary
 keys::
+
     pks = {
         'Customer': Pk(['id']).in_batches(1),
         'Order': Pk(['id']),
@@ -213,6 +228,7 @@ dump that never ends.
 
 You can create a dump schema (tut-schema-5.py) that won't import by changing the 
 primary keys as follows::
+
     from mysqlpartialdump import NO_KEY_CACHE
     pks = {
         'Customer': Pk(['id'], NO_KEY_CACHE),
@@ -224,6 +240,7 @@ primary keys as follows::
 Here we have used NO_KEY_CACHE as an option to the primary key. This option
 turns off the key caching described above. By combining this with batching
 Order in batches of 1 we will get a single Customer row insert for each Order::
+
     INSERT  INTO Order(`id`,`customer_id`) VALUES(2,2);
     INSERT  INTO Customer(`id`,`email`) VALUES(2,'bob-3439811783597610316');
     INSERT  INTO Order(`id`,`customer_id`) VALUES(3,2);
@@ -231,6 +248,7 @@ Order in batches of 1 we will get a single Customer row insert for each Order::
 
 This will fail on the second insert to Customer due to a primary key conflict.
 To solve this we can specify that duplicates can be ignored (tut-schema-6.py)::
+
     from mysqlpartialdump import NO_KEY_CACHE, ALLOW_DUPLICATES
     pks = {
         'Customer': Pk(['id'], NO_KEY_CACHE, ALLOW_DUPLICATES),
@@ -239,7 +257,8 @@ To solve this we can specify that duplicates can be ignored (tut-schema-6.py)::
         'Product': Pk(['id']),
     }
 
-This generates SQL like the following:
+This generates SQL like the following::
+
     INSERT  INTO Order(`id`,`customer_id`) VALUES(2,2);
     INSERT IGNORE INTO Customer(`id`,`email`) VALUES(2,'bob-3439811783597610316');
     INSERT  INTO Order(`id`,`customer_id`) VALUES(3,2);
@@ -260,6 +279,7 @@ Chunking
 Importing a big dump can be time consuming. It can be done quicker if the dump
 is split in to multiple files and each imported simultaneously. This can be
 achieved with the command line option chunks::
+
     python mysqlpartialdump.py -u <username> -s <password> -d dumper_tutorial --chunks=2 tut-schema-1.py
 
 Each chunk will be output with a number at the end. In this case: dump.sql.0
@@ -270,6 +290,7 @@ Complex relationships
 
 Some databases have complex relationships where a row may depend on a row from
 a table that is determined by some value in the row. For example:
+
 * our Product table could have a type column that is either 'book', 'dvd' or
   'other'
 * If the type is 'book' then there is an associated row in the Book table
@@ -278,6 +299,7 @@ a table that is determined by some value in the row. For example:
   
 This cannot be modelled with a simple static relationship. Instead you must use
 a callback::
+
     def get_product_rel(row):
         if row['type'] == 'book':
             return ('Book', ('product_id', row['id']))
