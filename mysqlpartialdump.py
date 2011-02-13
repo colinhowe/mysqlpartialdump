@@ -1,7 +1,7 @@
 import MySQLdb
 from MySQLdb import cursors
 import sys
-import getopt
+import argparse
 from sys import stderr
 from datetime import datetime
 from collections import defaultdict
@@ -19,7 +19,7 @@ ALLOW_DUPLICATES = 'allow duplicates'
 NO_KEY_CACHE = 'no key cache'
 
 def get_schema(cursor, name):
-    cursor.execute("DESCRIBE %s"%name)
+    cursor.execute("DESCRIBE `%s`"%name)
     return cursor.fetchall()
 
 def debug(msg):
@@ -349,7 +349,7 @@ class Dumper(object):
         
         (safe_col_names, _, _) = self._get_schema(table_name)
         self.cursor.execute(
-                "SELECT %s FROM %s WHERE %s"%( 
+                "SELECT %s FROM `%s` WHERE %s"%( 
                     ",".join(safe_col_names),
                     table_name,
                     where
@@ -371,37 +371,53 @@ class Dumper(object):
         self._do_follows(to_follow)
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-c', '--chunks', metavar="chunks", type=int, default=1, 
+                        help='the number of chunks to output. Default 1')
+    parser.add_argument('-p', '--port', metavar="port", type=int, default=3306,
+                        help='the port MySQL is listening on. Default 3306')
+    parser.add_argument('-a', '--address', metavar="address", default='localhost',
+                        help='the address of the MySQL server')
+    parser.add_argument('-u', '--username', metavar="username", required=True,
+                        help='the username to connect to MySQL')
+    parser.add_argument('-s', '--password', metavar="password", required=True,
+                        help='the password to connect to MySQL')
+    parser.add_argument('-d', '--database', metavar="database", required=True,
+                        help='the name of the database to use')
+    parser.add_argument('-o', '--output', metavar="output prefix", 
+                        default='dump.sql',
+                        help='the prefix for the output. Default dump.sql')
+    parser.add_argument('--debug', metavar='level', choices=['info', 'debug'],
+                        help='Level of debug to apply: info or debug')
+    parser.add_argument('dumpschema',
+                        help='the python dumpschema to use')
+    args = parser.parse_args()
 
-    optlist, args = getopt.getopt(sys.argv[1:], 'dic:o:')
+    if args.debug == 'debug':
+        DEBUG_LEVEL = LOG_DEBUG
+    elif args.debug == 'info':
+        DEBUG_LEVEL = LOG_INFO
 
-    for o, a in optlist:
-        if o == '-d':
-            DEBUG_LEVEL = LOG_DEBUG
-        if o == '-i':
-            DEBUG_LEVEL = LOG_INFO
-        if o == '-c':
-            chunks = int(a)
-        if o == '-o':
-            output_prefix = a
+    dumpschema = args.dumpschema
+    dumpschema = dumpschema[:dumpschema.rfind('.')]
 
-    configuration_file = args[0]
     try:
-        m = __import__(configuration_file)
+        m = __import__(dumpschema)
         Dumper(
                 m.relationships, 
                 m.pks, 
                 m.callbacks,
-                m.DB_ADDRESS,
-                m.DB_PORT,
-                m.DB_USERNAME,
-                m.DB_PASSWORD,
-                m.DB_NAME,
+                args.address,
+                args.port,
+                args.username,
+                args.password,
+                args.database,
                 m.start_table,
                 m.start_where,
                 m.start_args,
                 m.end_sql,
-                chunks,
-                output_prefix).go()
+                args.chunks,
+                args.output).go()
     except ImportError, e:
-        print 'Failed to import %s:'%configuration_file
+        print 'Failed to import %s:'%dumpschema
         print e
