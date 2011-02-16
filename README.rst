@@ -6,9 +6,12 @@ MySQLPartialDump
 
 About
 =====
-MySQLPartialDump is a tool for MySQL that makes it easier to dump a 
-section of a database in a meaningful way. A full tutorial and explanation
-is below.
+MySQLPartialDump is a tool for MySQL that makes it easier to dump a section of
+a database in a meaningful way. For example, if you have a database of users
+with data for each user, you could use MySQLPartialDump to export the data
+for just a single user.
+
+A full tutorial and explanation is below.
 
 Dependencies
 ============
