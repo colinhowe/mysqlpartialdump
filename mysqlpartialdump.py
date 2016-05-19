@@ -33,6 +33,8 @@ def info(msg):
 def make_safe(value):
     if value is None:
         return 'NULL'
+    if isinstance(value, datetime):
+        return "'%s'" % value
     if not isinstance(value, basestring):
         return str(value)
     value = value.replace("'", "''").replace("\\", "\\\\")
